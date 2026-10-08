@@ -1,7 +1,7 @@
 import { Link, useParams } from 'react-router-dom';
 
 import Button from '../../components/Button/Button';
-import BoardColumn from '../../components/BoardColumn/BoardColumn';
+import KanbanBoard from '../../components/KanbanBoard/KanbanBoard';
 import { mockBoards } from '../../services/boards';
 
 import './BoardPage.scss';
@@ -61,14 +61,11 @@ function BoardPage() {
       </header>
 
       <section className="board-page__content">
-        <div className="board-page__columns">
-          {board.columns.map((column) => (
-            <BoardColumn
-              key={column.id}
-              column={column}
-            />
-          ))}
-        </div>
+        <KanbanBoard
+          initialColumns={
+            board.columns
+          }
+        />
       </section>
     </div>
   );

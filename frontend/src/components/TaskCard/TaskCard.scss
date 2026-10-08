@@ -47,3 +47,48 @@
   color: var(--color-text-secondary);
   font-size: 12px;
 }
+
+.task-card:hover {
+  border-color: var(--color-primary);
+}
+
+.task-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-card__menu {
+  display: inline-flex;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  margin-top: -4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.task-card:hover .task-card__menu,
+.task-card__menu:focus-visible {
+  opacity: 1;
+}
+
+.task-card__menu:hover {
+  background-color: var(--color-background);
+  color: var(--color-text);
+}

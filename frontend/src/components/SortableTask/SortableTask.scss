@@ -1,0 +1,11 @@
+.sortable-task {
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.sortable-task--dragging {
+  opacity: 0.5;
+}
