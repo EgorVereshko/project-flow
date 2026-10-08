@@ -96,3 +96,48 @@
     font-size: 26px;
   }
 }
+
+.boards-page__item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.boards-page__item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.boards-page__open {
+  margin-right: auto;
+  color: var(--color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.boards-page__open:hover {
+  text-decoration: underline;
+}
+
+.boards-page__empty {
+  display: flex;
+  min-height: 300px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.boards-page__empty h2 {
+  margin: 0 0 8px;
+}
+
+.boards-page__empty p {
+  margin: 0 0 20px;
+  color: var(--color-text-secondary);
+}

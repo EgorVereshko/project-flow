@@ -12,10 +12,12 @@ import {
 } from '@dnd-kit/sortable';
 
 import {
+  useEffect,
   useState,
 } from 'react';
 
 import BoardColumn from '../BoardColumn/BoardColumn';
+
 import Button from '../Button/Button';
 import Modal from '../Modal/Modal';
 import TaskCard from '../TaskCard/TaskCard';
@@ -52,10 +54,6 @@ import type {
 
 import './KanbanBoard.scss';
 
-type KanbanBoardProps = {
-  initialColumns: BoardColumnType[];
-};
-
 type ModalMode =
   | 'create-task'
   | 'edit-task'
@@ -63,13 +61,26 @@ type ModalMode =
   | 'edit-column'
   | null;
 
+type KanbanBoardProps = {
+  initialColumns: BoardColumnType[];
+  onColumnsChange?: (columns: BoardColumnType[]) => void;
+};
+
 function KanbanBoard({
   initialColumns,
+  onColumnsChange,
 }: KanbanBoardProps) {
   const [
     columns,
     setColumns,
   ] = useState(initialColumns);
+
+  useEffect(() => {
+    onColumnsChange?.(columns);
+  }, [
+    columns,
+    onColumnsChange,
+  ]);
 
   const [
     activeTaskId,
