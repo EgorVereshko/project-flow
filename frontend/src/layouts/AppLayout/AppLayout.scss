@@ -1,0 +1,18 @@
+.app-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+
+  &__header {
+    height: 64px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  &__main {
+    flex: 1;
+    padding: 24px;
+  }
+}
