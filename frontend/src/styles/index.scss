@@ -1,3 +1,5 @@
+@use './variables';
+
 * {
   box-sizing: border-box;
 }
@@ -17,4 +19,6 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
+  background: var(--color-background);
+  color: var(--color-text);
 }

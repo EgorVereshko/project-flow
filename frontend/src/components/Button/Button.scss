@@ -1,0 +1,65 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 10px 20px;
+
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+
+  cursor: pointer;
+  user-select: none;
+
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &:not(:disabled):focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  // ---- Варианты ----
+
+  &--primary {
+    background-color: var(--color-primary);
+    color: #ffffff;
+
+    &:not(:disabled):hover {
+      background-color: var(--color-primary-hover);
+    }
+  }
+
+  &--secondary {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    border-color: var(--color-border);
+
+    &:not(:disabled):hover {
+      background-color: var(--color-background);
+      border-color: var(--color-text-secondary);
+    }
+  }
+
+  &--danger {
+    background-color: #ef4444;
+    color: #ffffff;
+
+    &:not(:disabled):hover {
+      background-color: #dc2626;
+    }
+  }
+}
