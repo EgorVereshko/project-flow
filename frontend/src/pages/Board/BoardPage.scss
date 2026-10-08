@@ -1,0 +1,97 @@
+.board-page {
+  width: 100%;
+}
+
+.board-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+
+.board-page__heading {
+  min-width: 0;
+}
+
+.board-page__back {
+  display: inline-block;
+  margin-bottom: 16px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  text-decoration: none;
+  transition: var(--transition-fast);
+
+  &:hover {
+    color: var(--color-primary);
+  }
+}
+
+.board-page__title {
+  margin: 0 0 8px;
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.board-page__description {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+}
+
+.board-page__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.board-page__content {
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 16px;
+}
+
+.board-page__columns {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  min-width: max-content;
+}
+
+.board-page--not-found {
+  display: flex;
+  min-height: 400px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+}
+
+.board-page--not-found h1 {
+  margin: 0 0 8px;
+}
+
+.board-page--not-found p {
+  margin: 0 0 20px;
+  color: var(--color-text-secondary);
+}
+
+.board-page--not-found a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+@media (max-width: 700px) {
+  .board-page__header {
+    flex-direction: column;
+  }
+
+  .board-page__actions {
+    width: 100%;
+  }
+
+  .board-page__actions .button {
+    flex: 1;
+  }
+}
