@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { Navigate, createBrowserRouter } from 'react-router-dom';
 
 import AppLayout from '@/layouts/AppLayout/AppLayout';
 
@@ -8,11 +8,24 @@ import DashboardPage from '@/pages/Dashboard/DashboardPage';
 import BoardsPage from '@/pages/Boards/BoardsPage';
 import BoardPage from '@/pages/Board/BoardPage';
 
+import {
+  ProtectedRoute,
+  PublicOnlyRoute,
+} from '@/features/auth/AuthGuards';
+
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <AppLayout />,
+    element: (
+      <ProtectedRoute>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
     children: [
+      {
+        index: true,
+        element: <Navigate to="/dashboard" replace />,
+      },
       {
         path: 'dashboard',
         element: <DashboardPage />,
@@ -29,10 +42,18 @@ export const router = createBrowserRouter([
   },
   {
     path: '/login',
-    element: <LoginPage />,
+    element: (
+      <PublicOnlyRoute>
+        <LoginPage />
+      </PublicOnlyRoute>
+    ),
   },
   {
     path: '/register',
-    element: <RegisterPage />,
+    element: (
+      <PublicOnlyRoute>
+        <RegisterPage />
+      </PublicOnlyRoute>
+    ),
   },
 ]);

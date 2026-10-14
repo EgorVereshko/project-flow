@@ -1,131 +1,109 @@
-import type {
-  BoardColumn,
-} from '../../types/board';
-
-import {
-  useCallback,
-} from 'react';
-
-import {
-  Link,
-  useParams,
-} from 'react-router-dom';
+import { useCallback, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import Button from '../../components/Button/Button';
-
 import KanbanBoard from '../../components/KanbanBoard/KanbanBoard';
 
-import {
-  useBoardStore,
-} from '../../store/boardStore';
+import { useAuthStore } from '../../features/auth/authStore';
+import { getBoard, updateBoard } from '../../services/boardsApi';
+
+import type { BoardColumn } from '../../types/board';
 
 import './BoardPage.scss';
 
 function BoardPage() {
+  const { boardId } = useParams();
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const queryClient = useQueryClient();
+  const [editError, setEditError] = useState<string | null>(null);
+
   const {
-    boardId,
-  } = useParams();
+    data: board,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ['board', boardId, accessToken],
+    queryFn: () => getBoard(boardId!, accessToken!),
+    enabled: Boolean(boardId && accessToken),
+  });
 
-  const boards =
-    useBoardStore(
-      (state) => state.boards,
-    );
+  const updateMutation = useMutation({
+    mutationFn: (data: { name: string; description: string }) =>
+      updateBoard(boardId!, data, accessToken!),
+    onSuccess: async (updatedBoard) => {
+      queryClient.setQueryData(
+        ['board', boardId, accessToken],
+        updatedBoard,
+      );
 
-  const updateBoard =
-    useBoardStore(
-      (state) => state.updateBoard,
-    );
+      await queryClient.invalidateQueries({
+        queryKey: ['boards'],
+      });
 
-  const updateBoardColumns =
-    useBoardStore(
-      (state) =>
-        state.updateBoardColumns,
-    );
+      setEditError(null);
+    },
+    onError: () => {
+      setEditError('Не удалось сохранить доску. Попробуйте ещё раз.');
+    },
+  });
 
-  const board =
-    boards.find(
-      (item) =>
-        item.id === boardId,
-    );
-
-  const handleColumnsChange =
-    useCallback(
-      (
-        columns: BoardColumn[],
-      ) => {
-        if (!boardId) {
-          return;
-        }
-
-        updateBoardColumns(
-          boardId,
-          columns,
-        );
-      },
-      [
-        boardId,
-        updateBoardColumns,
-      ],
-    );
+  const handleColumnsChange = useCallback(
+    (_columns: BoardColumn[]) => {
+      // Сохранение колонок и задач через API подключим следующим этапом.
+    },
+    [],
+  );
 
   function handleEditBoard() {
-    if (!board) {
-      return;
-    }
+    if (!board) return;
 
-    const name =
-      window.prompt(
-        'Board name',
-        board.name,
-      );
+    const name = window.prompt('Board name', board.name);
+    if (name === null) return;
 
-    if (name === null) {
-      return;
-    }
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
 
-    const trimmedName =
-      name.trim();
+    const description = window.prompt(
+      'Board description',
+      board.description,
+    );
+    if (description === null) return;
 
-    if (!trimmedName) {
-      return;
-    }
+    updateMutation.mutate({
+      name: trimmedName,
+      description: description.trim(),
+    });
+  }
 
-    const description =
-      window.prompt(
-        'Board description',
-        board.description,
-      );
-
-    if (description === null) {
-      return;
-    }
-
-    updateBoard(
-      board.id,
-      {
-        name: trimmedName,
-        description:
-          description.trim(),
-      },
+  if (!accessToken) {
+    return (
+      <div className="board-page">
+        <p>Сессия не найдена. Войди в аккаунт и попробуй снова.</p>
+        <Link to="/boards">Back to boards</Link>
+      </div>
     );
   }
 
-  if (!board) {
+  if (isPending) {
+    return (
+      <div className="board-page">
+        <p>Loading board...</p>
+      </div>
+    );
+  }
+
+  if (isError || !board) {
     return (
       <div className="board-page board-page--not-found">
-        <h1>
-          Board not found
-        </h1>
-
-        <p>
-          The board you are
-          looking for does not
-          exist.
-        </p>
-
-        <Link to="/boards">
-          Back to boards
-        </Link>
+        <h1>Board not found</h1>
+        <p>The board could not be loaded.</p>
+        <Button onClick={() => void refetch()}>
+          Try again
+        </Button>
+        {' '}
+        <Link to="/boards">Back to boards</Link>
       </div>
     );
   }
@@ -153,24 +131,21 @@ function BoardPage() {
         <div className="board-page__actions">
           <Button
             variant="secondary"
-            onClick={
-              handleEditBoard
-            }
+            onClick={handleEditBoard}
+            disabled={updateMutation.isPending}
           >
             Edit Board
           </Button>
         </div>
       </header>
 
+      {editError && <p role="alert">{editError}</p>}
+
       <section className="board-page__content">
-        <KanbanBoard
-          initialColumns={
-            board.columns
-          }
-          onColumnsChange={
-            handleColumnsChange
-          }
-        />
+      <KanbanBoard
+        initialColumns={board.columns}
+        onColumnsChange={handleColumnsChange}
+      />
       </section>
     </div>
   );
