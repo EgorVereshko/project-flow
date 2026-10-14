@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: projectflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: projectflow
+      POSTGRES_PASSWORD: projectflow_dev_password
+      POSTGRES_DB: projectflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - projectflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U projectflow -d projectflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  projectflow-postgres-data:
