@@ -8,8 +8,8 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
-import { useEffect, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import BoardColumn from '../BoardColumn/BoardColumn';
 import Button from '../Button/Button';
@@ -30,22 +30,26 @@ import {
   deleteTask as deleteTaskApi,
   moveTask as moveTaskApi,
 } from '../../services/tasksApi';
+import {
+  createBoardColumn,
+  deleteBoardColumn,
+  reorderBoardColumns,
+  updateBoardColumn,
+} from '../../services/boardsApi';
 
 import {
-  addColumn,
   addTaskToColumn,
-  deleteColumn,
   deleteTask,
   findColumnById,
   findColumnByTaskId,
   findTaskById,
   moveTaskBetweenColumns,
-  updateColumn,
   updateTask,
 } from '../../lib/boardUtils';
 
 import type {
   BoardColumn as BoardColumnType,
+  Board,
   Task,
 } from '../../types/board';
 
@@ -59,15 +63,16 @@ type ModalMode =
   | null;
 
 type KanbanBoardProps = {
+  boardId: string;
   initialColumns: BoardColumnType[];
-  onColumnsChange?: (columns: BoardColumnType[]) => void;
 };
 
 function KanbanBoard({
+  boardId,
   initialColumns,
-  onColumnsChange,
 }: KanbanBoardProps) {
   const accessToken = useAuthStore((state) => state.accessToken);
+  const queryClient = useQueryClient();
 
   const [columns, setColumns] = useState(initialColumns);
   const columnsRef = useRef(initialColumns);
@@ -79,21 +84,25 @@ function KanbanBoard({
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
   const [isSavingTask, setIsSavingTask] = useState(false);
+  const [isSavingColumn, setIsSavingColumn] = useState(false);
 
-  // Сохраняем актуальное состояние для отката при ошибке API.
   function applyColumns(next: BoardColumnType[]) {
     columnsRef.current = next;
     setColumns(next);
+    queryClient.setQueryData<Board>(
+      ['board', boardId, accessToken],
+      (board) => board
+        ? {
+            ...board,
+            columns: next,
+            tasksCount: next.reduce(
+              (total, column) => total + column.tasks.length,
+              0,
+            ),
+          }
+        : board,
+    );
   }
-
-  useEffect(() => {
-    columnsRef.current = initialColumns;
-    setColumns(initialColumns);
-  }, [initialColumns]);
-
-  useEffect(() => {
-    onColumnsChange?.(columns);
-  }, [columns, onColumnsChange]);
 
   const createTaskMutation = useMutation({
     mutationFn: (data: {
@@ -105,6 +114,90 @@ function KanbanBoard({
         throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
       }
       return createTask(data, accessToken);
+    },
+  });
+
+  const createColumnMutation = useMutation({
+    mutationFn: (title: string) => {
+      if (!accessToken) {
+        throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
+      }
+      return createBoardColumn(boardId, title, accessToken);
+    },
+    onSuccess: (column) => {
+      applyColumns([
+        ...columnsRef.current,
+        { id: column.id, title: column.title, tasks: [] },
+      ]);
+    },
+  });
+
+  const updateColumnMutation = useMutation({
+    mutationFn: ({
+      columnId,
+      title,
+    }: {
+      columnId: string;
+      title: string;
+    }) => {
+      if (!accessToken) {
+        throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
+      }
+      return updateBoardColumn(boardId, columnId, title, accessToken);
+    },
+    onSuccess: (updatedColumn) => {
+      applyColumns(
+        columnsRef.current.map((column) =>
+          column.id === updatedColumn.id
+            ? { ...column, title: updatedColumn.title }
+            : column,
+        ),
+      );
+    },
+  });
+
+  const deleteColumnMutation = useMutation({
+    mutationFn: (columnId: string) => {
+      if (!accessToken) {
+        throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
+      }
+      return deleteBoardColumn(boardId, columnId, accessToken);
+    },
+    onSuccess: (savedColumns) => {
+      const currentColumns = new Map(
+        columnsRef.current.map((column) => [column.id, column]),
+      );
+      applyColumns(
+        savedColumns.flatMap((column) => {
+          const current = currentColumns.get(column.id);
+          return current
+            ? [{ ...current, title: column.title }]
+            : [];
+        }),
+      );
+      void queryClient.invalidateQueries({ queryKey: ['boards'] });
+    },
+  });
+
+  const reorderColumnsMutation = useMutation({
+    mutationFn: (columnIds: string[]) => {
+      if (!accessToken) {
+        throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
+      }
+      return reorderBoardColumns(boardId, columnIds, accessToken);
+    },
+    onSuccess: (savedColumns) => {
+      const currentColumns = new Map(
+        columnsRef.current.map((column) => [column.id, column]),
+      );
+      applyColumns(
+        savedColumns.flatMap((column) => {
+          const current = currentColumns.get(column.id);
+          return current
+            ? [{ ...current, title: column.title }]
+            : [];
+        }),
+      );
     },
   });
 
@@ -161,10 +254,6 @@ async function handleDragEnd(event: DragEndEvent) {
   if (!activeColumn) return;
 
   const overTaskColumn = findColumnByTaskId(currentColumns, overId);
-  const overColumn = findColumnById(currentColumns, overId);
-  const targetColumn = overColumn ?? overTaskColumn;
-
-  let nextColumns = currentColumns;
 
   // Меняем порядок только при отпускании над другой задачей.
   // Если overId — ID колонки, newIndex будет -1,
@@ -187,7 +276,7 @@ async function handleDragEnd(event: DragEndEvent) {
       newIndex >= 0 &&
       oldIndex !== newIndex
     ) {
-      nextColumns = currentColumns.map((column) =>
+      const nextColumns = currentColumns.map((column) =>
         column.id === activeColumn.id
           ? {
               ...column,
@@ -366,27 +455,40 @@ async function handleDragEnd(event: DragEndEvent) {
     }
   }
 
-  function handleCreateColumn(values: ColumnFormValues) {
-    const newColumn: BoardColumnType = {
-      id: crypto.randomUUID(),
-      title: values.title,
-      tasks: [],
-    };
+  async function handleCreateColumn(values: ColumnFormValues) {
+    setTaskError(null);
+    setIsSavingColumn(true);
 
-    applyColumns(addColumn(columnsRef.current, newColumn));
-    closeModal();
+    try {
+      await createColumnMutation.mutateAsync(values.title);
+      closeModal();
+    } catch {
+      setTaskError('Не удалось создать колонку. Попробуй ещё раз.');
+    } finally {
+      setIsSavingColumn(false);
+    }
   }
 
-  function handleUpdateColumn(values: ColumnFormValues) {
+  async function handleUpdateColumn(values: ColumnFormValues) {
     if (!editingColumnId) return;
 
-    applyColumns(
-      updateColumn(columnsRef.current, editingColumnId, values.title),
-    );
-    closeModal();
+    setTaskError(null);
+    setIsSavingColumn(true);
+
+    try {
+      await updateColumnMutation.mutateAsync({
+        columnId: editingColumnId,
+        title: values.title,
+      });
+      closeModal();
+    } catch {
+      setTaskError('Не удалось переименовать колонку. Попробуй ещё раз.');
+    } finally {
+      setIsSavingColumn(false);
+    }
   }
 
-  function handleDeleteColumn(columnId: string) {
+  async function handleDeleteColumn(columnId: string) {
     if (columnsRef.current.length <= 1) {
       window.alert('На доске должна остаться хотя бы одна колонка.');
       return;
@@ -401,7 +503,56 @@ async function handleDragEnd(event: DragEndEvent) {
 
     if (!window.confirm(message)) return;
 
-    applyColumns(deleteColumn(columnsRef.current, columnId));
+    setTaskError(null);
+    setIsSavingColumn(true);
+
+    try {
+      await deleteColumnMutation.mutateAsync(columnId);
+    } catch {
+      setTaskError('Не удалось удалить колонку. Попробуй ещё раз.');
+    } finally {
+      setIsSavingColumn(false);
+    }
+  }
+
+  async function handleMoveColumn(
+    columnId: string,
+    direction: 'left' | 'right',
+  ) {
+    const currentColumns = columnsRef.current;
+    const currentIndex = currentColumns.findIndex(
+      (column) => column.id === columnId,
+    );
+    const targetIndex = direction === 'left'
+      ? currentIndex - 1
+      : currentIndex + 1;
+
+    if (
+      currentIndex < 0
+      || targetIndex < 0
+      || targetIndex >= currentColumns.length
+    ) {
+      return;
+    }
+
+    const reordered = [...currentColumns];
+    [reordered[currentIndex], reordered[targetIndex]] = [
+      reordered[targetIndex],
+      reordered[currentIndex],
+    ];
+
+    setTaskError(null);
+    setIsSavingColumn(true);
+
+    try {
+      await reorderColumnsMutation.mutateAsync(
+        reordered.map((column) => column.id),
+      );
+    } catch {
+      setTaskError('Не удалось изменить порядок колонок. Попробуй ещё раз.');
+    } finally {
+      setIsSavingColumn(false);
+    }
   }
 
   const activeTask = activeTaskId
@@ -423,7 +574,11 @@ async function handleDragEnd(event: DragEndEvent) {
   return (
     <>
       <div className="kanban-board__toolbar">
-        <Button variant="secondary" onClick={openCreateColumnModal}>
+        <Button
+          variant="secondary"
+          onClick={openCreateColumnModal}
+          disabled={isSavingColumn}
+        >
           + Add Column
         </Button>
       </div>
@@ -449,7 +604,13 @@ async function handleDragEnd(event: DragEndEvent) {
               onAddTask={() => openCreateTaskModal(column.id)}
               onEditTask={openEditTaskModal}
               onEditColumn={openEditColumnModal}
-              onDeleteColumn={handleDeleteColumn}
+              onDeleteColumn={(columnId) => void handleDeleteColumn(columnId)}
+              onMoveColumn={(columnId, direction) =>
+                void handleMoveColumn(columnId, direction)
+              }
+              columnIndex={columns.indexOf(column)}
+              columnCount={columns.length}
+              isSaving={isSavingColumn}
             />
           ))}
         </div>
@@ -523,6 +684,7 @@ async function handleDragEnd(event: DragEndEvent) {
             submitLabel="Create Column"
             onSubmit={handleCreateColumn}
             onCancel={closeModal}
+            isSubmitting={isSavingColumn}
           />
         </Modal>
       )}
@@ -534,6 +696,7 @@ async function handleDragEnd(event: DragEndEvent) {
             submitLabel="Save Changes"
             onSubmit={handleUpdateColumn}
             onCancel={closeModal}
+            isSubmitting={isSavingColumn}
           />
         </Modal>
       )}

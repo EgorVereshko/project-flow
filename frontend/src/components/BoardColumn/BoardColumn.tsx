@@ -27,6 +27,13 @@ type BoardColumnProps = {
   onDeleteColumn: (
     columnId: string,
   ) => void;
+  onMoveColumn: (
+    columnId: string,
+    direction: 'left' | 'right',
+  ) => void;
+  columnIndex: number;
+  columnCount: number;
+  isSaving: boolean;
 };
 
 function BoardColumn({
@@ -35,6 +42,10 @@ function BoardColumn({
   onEditTask,
   onEditColumn,
   onDeleteColumn,
+  onMoveColumn,
+  columnIndex,
+  columnCount,
+  isSaving,
 }: BoardColumnProps) {
   const {
     setNodeRef,
@@ -70,6 +81,11 @@ function BoardColumn({
     onDeleteColumn(column.id);
   }
 
+  function handleMoveColumn(direction: 'left' | 'right') {
+    setIsMenuOpen(false);
+    onMoveColumn(column.id, direction);
+  }
+
   return (
     <section
       ref={setNodeRef}
@@ -94,6 +110,7 @@ function BoardColumn({
           <Button
             variant="secondary"
             onClick={onAddTask}
+            disabled={isSaving}
           >
             +
           </Button>
@@ -103,6 +120,7 @@ function BoardColumn({
               className="board-column__menu-button"
               type="button"
               aria-label={`Actions for ${column.title}`}
+              disabled={isSaving}
               onClick={
                 handleMenuToggle
               }
@@ -115,6 +133,25 @@ function BoardColumn({
                 <button
                   type="button"
                   className="board-column__menu-item"
+                  disabled={isSaving || columnIndex === 0}
+                  onClick={() => handleMoveColumn('left')}
+                >
+                  Move left
+                </button>
+
+                <button
+                  type="button"
+                  className="board-column__menu-item"
+                  disabled={isSaving || columnIndex === columnCount - 1}
+                  onClick={() => handleMoveColumn('right')}
+                >
+                  Move right
+                </button>
+
+                <button
+                  type="button"
+                  className="board-column__menu-item"
+                  disabled={isSaving}
                   onClick={
                     handleEditColumn
                   }
@@ -125,6 +162,7 @@ function BoardColumn({
                 <button
                   type="button"
                   className="board-column__menu-item board-column__menu-item--danger"
+                  disabled={isSaving}
                   onClick={
                     handleDeleteColumn
                   }

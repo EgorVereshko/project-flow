@@ -14,6 +14,20 @@ type BoardResponse = {
   board: Board;
 };
 
+export type BoardColumnRecord = {
+  id: string;
+  title: string;
+  position: number;
+};
+
+type ColumnResponse = {
+  column: BoardColumnRecord;
+};
+
+type ColumnsResponse = {
+  columns: BoardColumnRecord[];
+};
+
 // Получить все доски пользователя
 export async function getBoards(
   accessToken: string,
@@ -86,4 +100,70 @@ export async function deleteBoard(
     { method: 'DELETE' },
     accessToken,
   );
+}
+
+export async function createBoardColumn(
+  boardId: string,
+  title: string,
+  accessToken: string,
+): Promise<BoardColumnRecord> {
+  const response = await apiRequest<ColumnResponse>(
+    `/api/boards/${boardId}/columns`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    },
+    accessToken,
+  );
+
+  return response.column;
+}
+
+export async function updateBoardColumn(
+  boardId: string,
+  columnId: string,
+  title: string,
+  accessToken: string,
+): Promise<BoardColumnRecord> {
+  const response = await apiRequest<ColumnResponse>(
+    `/api/boards/${boardId}/columns/${columnId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    },
+    accessToken,
+  );
+
+  return response.column;
+}
+
+export async function deleteBoardColumn(
+  boardId: string,
+  columnId: string,
+  accessToken: string,
+): Promise<BoardColumnRecord[]> {
+  const response = await apiRequest<ColumnsResponse>(
+    `/api/boards/${boardId}/columns/${columnId}`,
+    { method: 'DELETE' },
+    accessToken,
+  );
+
+  return response.columns;
+}
+
+export async function reorderBoardColumns(
+  boardId: string,
+  columnIds: string[],
+  accessToken: string,
+): Promise<BoardColumnRecord[]> {
+  const response = await apiRequest<ColumnsResponse>(
+    `/api/boards/${boardId}/columns/order`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ columnIds }),
+    },
+    accessToken,
+  );
+
+  return response.columns;
 }

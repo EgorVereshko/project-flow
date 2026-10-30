@@ -16,8 +16,9 @@ type ColumnFormProps = {
   submitLabel: string;
   onSubmit: (
     values: ColumnFormValues,
-  ) => void;
+  ) => void | Promise<void>;
   onCancel: () => void;
+  isSubmitting?: boolean;
 };
 
 function ColumnForm({
@@ -25,23 +26,25 @@ function ColumnForm({
   submitLabel,
   onSubmit,
   onCancel,
+  isSubmitting: isSaving = false,
 }: ColumnFormProps) {
   const {
     register,
     handleSubmit,
     formState: {
       errors,
-      isSubmitting,
+      isSubmitting: isFormSubmitting,
     },
   } = useForm<ColumnFormValues>({
     resolver: zodResolver(columnSchema),
     defaultValues,
   });
+  const submitting = isSaving || isFormSubmitting;
 
-  function submitForm(
+  async function submitForm(
     values: ColumnFormValues,
   ) {
-    onSubmit({
+    await onSubmit({
       title: values.title.trim(),
     });
   }
@@ -67,6 +70,7 @@ function ColumnForm({
           type="text"
           placeholder="Enter column name"
           autoFocus
+          disabled={submitting}
           {...register('title')}
         />
 
@@ -82,15 +86,16 @@ function ColumnForm({
           type="button"
           variant="secondary"
           onClick={onCancel}
+          disabled={submitting}
         >
           Cancel
         </Button>
 
         <Button
           type="submit"
-          disabled={isSubmitting}
+          disabled={submitting}
         >
-          {submitLabel}
+          {submitting ? 'Saving...' : submitLabel}
         </Button>
       </div>
     </form>

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -7,8 +7,6 @@ import KanbanBoard from '../../components/KanbanBoard/KanbanBoard';
 
 import { useAuthStore } from '../../features/auth/authStore';
 import { getBoard, updateBoard } from '../../services/boardsApi';
-
-import type { BoardColumn } from '../../types/board';
 
 import './BoardPage.scss';
 
@@ -48,13 +46,6 @@ function BoardPage() {
       setEditError('Не удалось сохранить доску. Попробуйте ещё раз.');
     },
   });
-
-  const handleColumnsChange = useCallback(
-    (_columns: BoardColumn[]) => {
-      // Сохранение колонок и задач через API подключим следующим этапом.
-    },
-    [],
-  );
 
   function handleEditBoard() {
     if (!board) return;
@@ -143,8 +134,9 @@ function BoardPage() {
 
       <section className="board-page__content">
       <KanbanBoard
+        key={board.id}
+        boardId={boardId!}
         initialColumns={board.columns}
-        onColumnsChange={handleColumnsChange}
       />
       </section>
     </div>
