@@ -1,7 +1,10 @@
 
 import { create } from 'zustand';
 
-import { apiRequest } from '@/services/api';
+import {
+  apiRequest,
+  setAccessTokenRefresher,
+} from '@/services/api';
 
 export interface AuthUser {
   id: string;
@@ -26,10 +29,11 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   refreshSession: () => Promise<void>;
+  refreshAccessToken: (expiredToken: string) => Promise<string | null>;
   logout: () => Promise<void>;
 }
 
-let refreshPromise: Promise<void> | null = null;
+let refreshPromise: Promise<string | null> | null = null;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -71,44 +75,66 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
-    refreshSession: async () => {
+  refreshSession: async () => {
     if (get().initialized) {
-        return;
+      return;
     }
 
     if (refreshPromise) {
-        return refreshPromise;
+      await refreshPromise;
+      return;
+    }
+
+    set({ status: 'loading' });
+    await get().refreshAccessToken('');
+  },
+
+  refreshAccessToken: async (expiredToken) => {
+    const { accessToken: currentToken, initialized, status } = get();
+
+    if (initialized && status !== 'authenticated') {
+      return null;
+    }
+
+    if (currentToken && currentToken !== expiredToken) {
+      return currentToken;
+    }
+
+    if (refreshPromise) {
+      return refreshPromise;
     }
 
     refreshPromise = (async () => {
-        set({ status: 'loading' });
-
-        try {
+      try {
         const result = await apiRequest<AuthResponse>(
-            '/api/auth/refresh',
-            { method: 'POST' },
+          '/api/auth/refresh',
+          { method: 'POST' },
         );
 
         set({
-            user: result.user,
-            accessToken: result.accessToken,
-            status: 'authenticated',
-            initialized: true,
+          user: result.user,
+          accessToken: result.accessToken,
+          status: 'authenticated',
+          initialized: true,
         });
-        } catch {
+
+        return result.accessToken;
+      } catch {
         set({
-            user: null,
-            accessToken: null,
-            status: 'unauthenticated',
-            initialized: true,
+          user: null,
+          accessToken: null,
+          status: 'unauthenticated',
+          initialized: true,
         });
-        } finally {
+
+        return null;
+      } finally {
         refreshPromise = null;
-        }
+      }
     })();
 
     return refreshPromise;
-    },
+  },
 
   logout: async () => {
     try {
@@ -125,3 +151,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 }));
+
+setAccessTokenRefresher((expiredToken) =>
+  useAuthStore.getState().refreshAccessToken(expiredToken),
+);

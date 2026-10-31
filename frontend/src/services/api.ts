@@ -20,10 +20,23 @@ export class ApiError extends Error {
   }
 }
 
+type AccessTokenRefresher = (
+  expiredToken: string,
+) => Promise<string | null>;
+
+let accessTokenRefresher: AccessTokenRefresher | null = null;
+
+export function setAccessTokenRefresher(
+  refresher: AccessTokenRefresher,
+): void {
+  accessTokenRefresher = refresher;
+}
+
 export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
   accessToken?: string | null,
+  retryAfterRefresh = true,
 ): Promise<T> {
   const headers = new Headers(options.headers);
 
@@ -40,6 +53,19 @@ export async function apiRequest<T>(
     headers,
     credentials: 'include',
   });
+
+  if (
+    response.status === 401
+    && retryAfterRefresh
+    && accessToken
+    && accessTokenRefresher
+  ) {
+    const refreshedToken = await accessTokenRefresher(accessToken);
+
+    if (refreshedToken) {
+      return apiRequest<T>(path, options, refreshedToken, false);
+    }
+  }
 
   if (response.status === 204) {
     return undefined as T;
