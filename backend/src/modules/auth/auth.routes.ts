@@ -59,38 +59,63 @@ router.post('/register', async (req, res) => {
 
   try {
     const passwordHash = await bcrypt.hash(password, 12);
-
-    const result = await pool.query<{
-      id: string;
-      name: string;
-      email: string;
-    }>(
-      `INSERT INTO users (name, email, password_hash)
-       VALUES ($1, $2, $3)
-       RETURNING id, name, email`,
-      [name, email, passwordHash],
-    );
-
-    const user = result.rows[0];
-
     const refreshToken = createRefreshToken();
+    const client = await pool.connect();
+    let transactionStarted = false;
+    let transactionCommitted = false;
 
-    await pool.query(
-      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-       VALUES ($1, $2, $3)`,
-      [
-        user.id,
-        hashRefreshToken(refreshToken),
-        addDays(new Date(), env.refreshTokenTtlDays),
-      ],
-    );
+    try {
+      await client.query('BEGIN');
+      transactionStarted = true;
 
-    setRefreshCookie(res, refreshToken);
+      const result = await client.query<{
+        id: string;
+        name: string;
+        email: string;
+      }>(
+        `INSERT INTO users (name, email, password_hash)
+         VALUES ($1, $2, $3)
+         RETURNING id, name, email`,
+        [name, email, passwordHash],
+      );
 
-    return res.status(201).json({
-      user,
-      accessToken: createAccessToken(user.id),
-    });
+      const user = result.rows[0];
+
+      await client.query(
+        `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3)`,
+        [
+          user.id,
+          hashRefreshToken(refreshToken),
+          addDays(new Date(), env.refreshTokenTtlDays),
+        ],
+      );
+
+      await client.query('COMMIT');
+      transactionCommitted = true;
+
+      setRefreshCookie(res, refreshToken);
+
+      return res.status(201).json({
+        user,
+        accessToken: createAccessToken(user.id),
+      });
+    } catch (error) {
+      if (transactionStarted && !transactionCommitted) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error(
+            'Failed to roll back user registration transaction:',
+            rollbackError,
+          );
+        }
+      }
+
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     if (
       typeof error === 'object' &&
