@@ -69,6 +69,7 @@ router.post('/', async (req, res) => {
     typeof req.body?.description === 'string'
       ? req.body.description.trim()
       : '';
+  const hasDescription = req.body?.description !== undefined;
   const assigneeId = req.body?.assigneeId ?? null;
   const deadlineInput = req.body?.deadline ?? null;
 
@@ -77,6 +78,7 @@ router.post('/', async (req, res) => {
     !isUuid(columnId) ||
     !title ||
     title.length > 200 ||
+    (hasDescription && typeof req.body.description !== 'string') ||
     description.length > 10_000 ||
     (assigneeId !== null && !isUuid(assigneeId)) ||
     (deadlineInput !== null && !isDateOnly(deadlineInput))
@@ -168,6 +170,8 @@ router.patch('/:taskId', async (req, res) => {
     typeof req.body?.description === 'string'
       ? req.body.description.trim()
       : undefined;
+  const hasTitle = req.body?.title !== undefined;
+  const hasDescription = req.body?.description !== undefined;
   const hasAssigneeId = Object.hasOwn(req.body ?? {}, 'assigneeId');
   const assigneeId = hasAssigneeId ? req.body.assigneeId : undefined;
   const hasDeadline = Object.hasOwn(req.body ?? {}, 'deadline');
@@ -179,6 +183,11 @@ router.patch('/:taskId', async (req, res) => {
       && description === undefined
       && !hasAssigneeId
       && !hasDeadline
+    ) ||
+    (hasTitle && typeof req.body.title !== 'string') ||
+    (
+      hasDescription
+      && typeof req.body.description !== 'string'
     ) ||
     (title !== undefined && (!title || title.length > 200)) ||
     (description !== undefined && description.length > 10_000) ||

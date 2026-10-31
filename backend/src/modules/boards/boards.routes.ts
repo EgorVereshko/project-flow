@@ -306,11 +306,17 @@ router.post('/', async (req, res) => {
   const name = typeof req.body?.name === 'string'
     ? req.body.name.trim()
     : '';
+  const hasDescription = req.body?.description !== undefined;
   const description = typeof req.body?.description === 'string'
     ? req.body.description.trim()
     : '';
 
-  if (!name || name.length > 150 || description.length > 10_000) {
+  if (
+    !name
+    || name.length > 150
+    || (hasDescription && typeof req.body.description !== 'string')
+    || description.length > 10_000
+  ) {
     return validationError(res);
   }
 
@@ -363,11 +369,17 @@ router.patch('/:boardId', async (req, res) => {
   const name = typeof req.body?.name === 'string'
     ? req.body.name.trim()
     : '';
+  const hasDescription = req.body?.description !== undefined;
   const description = typeof req.body?.description === 'string'
     ? req.body.description.trim()
     : '';
 
-  if (!name || name.length > 150 || description.length > 10_000) {
+  if (
+    !name
+    || name.length > 150
+    || (hasDescription && typeof req.body.description !== 'string')
+    || description.length > 10_000
+  ) {
     return validationError(res);
   }
 

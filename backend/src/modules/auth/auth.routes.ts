@@ -118,7 +118,12 @@ router.post('/login', async (req, res) => {
   const password =
     typeof req.body?.password === 'string' ? req.body.password : '';
 
-  if (!email || !password || email.length > 255) {
+  if (
+    !email
+    || !emailPattern.test(email)
+    || email.length > 255
+    || !password
+  ) {
     return res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',

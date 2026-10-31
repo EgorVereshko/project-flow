@@ -9,16 +9,16 @@ export const boardSchema = z.object({
       'Board name is required',
     )
     .max(
-      100,
-      'Board name must be 100 characters or less',
+      150,
+      'Board name must be 150 characters or less',
     ),
 
   description: z
     .string()
     .trim()
     .max(
-      300,
-      'Description must be 300 characters or less',
+      10_000,
+      'Description must be 10000 characters or less',
     ),
 });
 

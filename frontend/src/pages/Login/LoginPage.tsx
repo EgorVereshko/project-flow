@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { ApiError } from '@/services/api';
 import { useAuthStore } from '@/features/auth/authStore';
+import { loginSchema } from '@/features/auth/registerSchema';
 
 import '../AuthPage.scss';
 
@@ -20,10 +21,17 @@ function LoginPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+
+    const validation = loginSchema.safeParse({ email, password });
+    if (!validation.success) {
+      setError(validation.error.issues[0]?.message ?? 'Проверьте введённые данные.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      await login(email.trim(), password);
+      await login(validation.data.email, validation.data.password);
 
       const from = (
         location.state as { from?: string } | null
@@ -77,13 +85,13 @@ function LoginPage() {
               <label htmlFor="login-email">Электронная почта</label>
               <input
                 id="login-email"
-                type="email"
+                type="text"
+                inputMode="email"
                 autoComplete="email"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
-                maxLength={255}
               />
             </div>
 

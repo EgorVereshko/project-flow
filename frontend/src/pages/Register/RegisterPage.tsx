@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { ApiError } from '@/services/api';
 import { useAuthStore } from '@/features/auth/authStore';
+import { registerSchema } from '@/features/auth/registerSchema';
 
 import '../AuthPage.scss';
 
@@ -22,25 +23,26 @@ function RegisterPage() {
     event.preventDefault();
     setError('');
 
-    if (password.length < 8) {
-      setError('Пароль должен содержать не менее 8 символов.');
-      return;
-    }
+    const validation = registerSchema.safeParse({
+      name,
+      email,
+      password,
+      confirmPassword,
+    });
 
-    if (new TextEncoder().encode(password).length > 72) {
-      setError('Пароль слишком длинный. Максимум — 72 байта.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Пароли не совпадают.');
+    if (!validation.success) {
+      setError(validation.error.issues[0]?.message ?? 'Проверьте введённые данные.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      await register(name.trim(), email.trim(), password);
+      await register(
+        validation.data.name,
+        validation.data.email,
+        validation.data.password,
+      );
       navigate('/dashboard', { replace: true });
     } catch (err) {
       setError(
@@ -93,7 +95,6 @@ function RegisterPage() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 required
-                maxLength={100}
               />
             </div>
 
@@ -101,13 +102,13 @@ function RegisterPage() {
               <label htmlFor="register-email">Электронная почта</label>
               <input
                 id="register-email"
-                type="email"
+                type="text"
+                inputMode="email"
                 autoComplete="email"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
-                maxLength={255}
               />
             </div>
 

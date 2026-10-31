@@ -6,16 +6,16 @@ export const taskSchema = z.object({
     .trim()
     .min(1, 'Task title is required')
     .max(
-      100,
-      'Task title must be 100 characters or less',
+      200,
+      'Task title must be 200 characters or less',
     ),
 
   description: z
     .string()
     .trim()
     .max(
-      500,
-      'Description must be 500 characters or less',
+      10_000,
+      'Description must be 10000 characters or less',
     ),
 
   assigneeId: z.union([

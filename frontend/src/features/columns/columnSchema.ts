@@ -6,8 +6,8 @@ export const columnSchema = z.object({
     .trim()
     .min(1, 'Column title is required')
     .max(
-      50,
-      'Column title must be 50 characters or less',
+      100,
+      'Column title must be 100 characters or less',
     ),
 });
 
