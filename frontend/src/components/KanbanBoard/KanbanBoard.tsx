@@ -9,7 +9,11 @@ import {
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import BoardColumn from '../BoardColumn/BoardColumn';
 import Button from '../Button/Button';
@@ -33,6 +37,7 @@ import {
 import {
   createBoardColumn,
   deleteBoardColumn,
+  getBoardMembers,
   reorderBoardColumns,
   updateBoardColumn,
 } from '../../services/boardsApi';
@@ -73,6 +78,11 @@ function KanbanBoard({
 }: KanbanBoardProps) {
   const accessToken = useAuthStore((state) => state.accessToken);
   const queryClient = useQueryClient();
+  const boardMembersQuery = useQuery({
+    queryKey: ['board-members', boardId, accessToken],
+    queryFn: () => getBoardMembers(boardId, accessToken!),
+    enabled: Boolean(boardId && accessToken),
+  });
 
   const [columns, setColumns] = useState(initialColumns);
   const columnsRef = useRef(initialColumns);
@@ -109,6 +119,8 @@ function KanbanBoard({
       columnId: string;
       title: string;
       description: string;
+      assigneeId: string | null;
+      deadline: string | null;
     }) => {
       if (!accessToken) {
         throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
@@ -372,6 +384,8 @@ async function handleDragEnd(event: DragEndEvent) {
         columnId: createColumnId,
         title: values.title,
         description: values.description,
+        assigneeId: values.assigneeId || null,
+        deadline: values.deadline || null,
       });
 
       applyColumns(
@@ -405,6 +419,8 @@ async function handleDragEnd(event: DragEndEvent) {
         {
           title: values.title,
           description: values.description,
+          assigneeId: values.assigneeId || null,
+          deadline: values.deadline || null,
         },
         accessToken,
       );
@@ -629,18 +645,30 @@ async function handleDragEnd(event: DragEndEvent) {
           title={`Add task to ${createColumn.title}`}
           onClose={closeModal}
         >
-          <TaskForm
-            defaultValues={{
-              title: '',
-              description: '',
-              assignee: '',
-              deadline: null,
-            }}
-            submitLabel={isSavingTask ? 'Creating...' : 'Create Task'}
-            onSubmit={handleCreateTask}
-            onCancel={closeModal}
-            isSubmitting={isSavingTask}
-          />
+          {boardMembersQuery.isPending ? (
+            <p>Loading board members...</p>
+          ) : boardMembersQuery.isError ? (
+            <div>
+              <p role="alert">Could not load board members.</p>
+              <Button onClick={() => void boardMembersQuery.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <TaskForm
+              members={boardMembersQuery.data}
+              defaultValues={{
+                title: '',
+                description: '',
+                assigneeId: '',
+                deadline: '',
+              }}
+              submitLabel={isSavingTask ? 'Creating...' : 'Create Task'}
+              onSubmit={handleCreateTask}
+              onCancel={closeModal}
+              isSubmitting={isSavingTask}
+            />
+          )}
         </Modal>
       )}
 
@@ -652,18 +680,30 @@ async function handleDragEnd(event: DragEndEvent) {
             </p>
           )}
 
-          <TaskForm
-            defaultValues={{
-              title: editingTask.title,
-              description: editingTask.description,
-              assignee: editingTask.assignee,
-              deadline: editingTask.deadline,
-            }}
-            submitLabel={isSavingTask ? 'Saving...' : 'Save Changes'}
-            onSubmit={handleUpdateTask}
-            onCancel={closeModal}
-            isSubmitting={isSavingTask}
-          />
+          {boardMembersQuery.isPending ? (
+            <p>Loading board members...</p>
+          ) : boardMembersQuery.isError ? (
+            <div>
+              <p role="alert">Could not load board members.</p>
+              <Button onClick={() => void boardMembersQuery.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <TaskForm
+              members={boardMembersQuery.data}
+              defaultValues={{
+                title: editingTask.title,
+                description: editingTask.description,
+                assigneeId: editingTask.assigneeId ?? '',
+                deadline: editingTask.deadline ?? '',
+              }}
+              submitLabel={isSavingTask ? 'Saving...' : 'Save Changes'}
+              onSubmit={handleUpdateTask}
+              onCancel={closeModal}
+              isSubmitting={isSavingTask}
+            />
+          )}
 
           <div className="kanban-board__delete">
             <Button

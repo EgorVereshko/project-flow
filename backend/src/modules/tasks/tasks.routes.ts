@@ -11,19 +11,52 @@ function getUserId(res: Parameters<typeof authenticate>[1]): string {
   return res.locals.userId as string;
 }
 
-async function hasBoardAccess(
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isDateOnly(value: unknown): value is string {
+  if (
+    typeof value !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
+    return false;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime())
+    && date.toISOString().slice(0, 10) === value;
+}
+
+async function getBoardIdForColumn(
   columnId: string,
   userId: string,
-): Promise<boolean> {
-  const result = await pool.query(
-    `SELECT 1
+): Promise<string | null> {
+  const result = await pool.query<{ board_id: string }>(
+    `SELECT bc.board_id
      FROM board_columns bc
      JOIN board_members bm ON bm.board_id = bc.board_id
      WHERE bc.id = $1 AND bm.user_id = $2`,
     [columnId, userId],
   );
 
-  return result.rowCount !== null && result.rowCount > 0;
+  return result.rows[0]?.board_id ?? null;
+}
+
+async function getBoardMemberName(
+  boardId: string,
+  memberId: string,
+): Promise<string | null> {
+  const result = await pool.query<{ name: string }>(
+    `SELECT u.name
+     FROM board_members bm
+     JOIN users u ON u.id = bm.user_id
+     WHERE bm.board_id = $1 AND bm.user_id = $2`,
+    [boardId, memberId],
+  );
+
+  return result.rows[0]?.name ?? null;
 }
 
 // Создание задачи
@@ -36,12 +69,17 @@ router.post('/', async (req, res) => {
     typeof req.body?.description === 'string'
       ? req.body.description.trim()
       : '';
+  const assigneeId = req.body?.assigneeId ?? null;
+  const deadlineInput = req.body?.deadline ?? null;
 
   if (
     !columnId ||
+    !isUuid(columnId) ||
     !title ||
     title.length > 200 ||
-    description.length > 10_000
+    description.length > 10_000 ||
+    (assigneeId !== null && !isUuid(assigneeId)) ||
+    (deadlineInput !== null && !isDateOnly(deadlineInput))
   ) {
     return res.status(400).json({
       error: {
@@ -52,12 +90,26 @@ router.post('/', async (req, res) => {
   }
 
   const userId = getUserId(res);
+  const boardId = await getBoardIdForColumn(columnId, userId);
 
-  if (!(await hasBoardAccess(columnId, userId))) {
+  if (!boardId) {
     return res.status(404).json({
       error: {
         code: 'COLUMN_NOT_FOUND',
         message: 'Column not found',
+      },
+    });
+  }
+
+  const assigneeName = assigneeId
+    ? await getBoardMemberName(boardId, assigneeId)
+    : null;
+
+  if (assigneeId && !assigneeName) {
+    return res.status(400).json({
+      error: {
+        code: 'INVALID_ASSIGNEE',
+        message: 'Assignee must be a member of this board',
       },
     });
   }
@@ -67,18 +119,27 @@ router.post('/', async (req, res) => {
     column_id: string;
     title: string;
     description: string;
+    assignee_id: string | null;
     deadline: Date | null;
   }>(
     `INSERT INTO tasks (
-       column_id, title, description, position, created_by_id
+       column_id, title, description, position, created_by_id,
+       assignee_id, deadline
      )
      VALUES (
        $1, $2, $3,
        (SELECT COUNT(*)::int FROM tasks WHERE column_id = $1),
-       $4
+       $4, $5, $6
      )
-     RETURNING id, column_id, title, description, deadline`,
-    [columnId, title, description, userId],
+     RETURNING id, column_id, title, description, assignee_id, deadline`,
+    [
+      columnId,
+      title,
+      description,
+      userId,
+      assigneeId,
+      deadlineInput ? new Date(`${deadlineInput}T00:00:00.000Z`) : null,
+    ],
   );
 
   const task = result.rows[0];
@@ -89,8 +150,9 @@ router.post('/', async (req, res) => {
       columnId: task.column_id,
       title: task.title,
       description: task.description,
-      assignee: '',
-      deadline: task.deadline?.toISOString() ?? null,
+      assigneeId: task.assignee_id,
+      assignee: assigneeName ?? '',
+      deadline: task.deadline?.toISOString().slice(0, 10) ?? null,
     },
   });
 });
@@ -106,22 +168,41 @@ router.patch('/:taskId', async (req, res) => {
     typeof req.body?.description === 'string'
       ? req.body.description.trim()
       : undefined;
+  const hasAssigneeId = Object.hasOwn(req.body ?? {}, 'assigneeId');
+  const assigneeId = hasAssigneeId ? req.body.assigneeId : undefined;
+  const hasDeadline = Object.hasOwn(req.body ?? {}, 'deadline');
+  const deadlineInput = hasDeadline ? req.body.deadline : undefined;
 
   if (
-    (title === undefined && description === undefined) ||
+    (
+      title === undefined
+      && description === undefined
+      && !hasAssigneeId
+      && !hasDeadline
+    ) ||
     (title !== undefined && (!title || title.length > 200)) ||
-    (description !== undefined && description.length > 10_000)
+    (description !== undefined && description.length > 10_000) ||
+    (
+      hasAssigneeId
+      && assigneeId !== null
+      && !isUuid(assigneeId)
+    ) ||
+    (
+      hasDeadline
+      && deadlineInput !== null
+      && !isDateOnly(deadlineInput)
+    )
   ) {
     return res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'Provide a valid title or description',
+        message: 'Provide valid task fields',
       },
     });
   }
 
-  const access = await pool.query(
-    `SELECT 1
+  const access = await pool.query<{ board_id: string }>(
+    `SELECT bc.board_id
      FROM tasks t
      JOIN board_columns bc ON bc.id = t.column_id
      JOIN board_members bm ON bm.board_id = bc.board_id
@@ -135,23 +216,55 @@ router.patch('/:taskId', async (req, res) => {
     });
   }
 
+  const boardId = access.rows[0].board_id;
+  let assigneeName: string | null | undefined;
+
+  if (hasAssigneeId && assigneeId) {
+    assigneeName = await getBoardMemberName(boardId, assigneeId);
+
+    if (!assigneeName) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_ASSIGNEE',
+          message: 'Assignee must be a member of this board',
+        },
+      });
+    }
+  }
+
   const result = await pool.query<{
     id: string;
     column_id: string;
     title: string;
     description: string;
+    assignee_id: string | null;
     deadline: Date | null;
   }>(
     `UPDATE tasks
      SET title = COALESCE($2, title),
          description = COALESCE($3, description),
+         assignee_id = CASE WHEN $4 THEN $5::uuid ELSE assignee_id END,
+         deadline = CASE WHEN $6 THEN $7::timestamptz ELSE deadline END,
          updated_at = NOW()
      WHERE id = $1
-     RETURNING id, column_id, title, description, deadline`,
-    [taskId, title ?? null, description ?? null],
+     RETURNING id, column_id, title, description, assignee_id, deadline`,
+    [
+      taskId,
+      title ?? null,
+      description ?? null,
+      hasAssigneeId,
+      assigneeId ?? null,
+      hasDeadline,
+      deadlineInput
+        ? new Date(`${deadlineInput}T00:00:00.000Z`)
+        : null,
+    ],
   );
 
   const task = result.rows[0];
+  if (assigneeName === undefined && task.assignee_id) {
+    assigneeName = await getBoardMemberName(boardId, task.assignee_id);
+  }
 
   return res.json({
     task: {
@@ -159,8 +272,9 @@ router.patch('/:taskId', async (req, res) => {
       columnId: task.column_id,
       title: task.title,
       description: task.description,
-      assignee: '',
-      deadline: task.deadline?.toISOString() ?? null,
+      assigneeId: task.assignee_id,
+      assignee: assigneeName ?? '',
+      deadline: task.deadline?.toISOString().slice(0, 10) ?? null,
     },
   });
 });

@@ -8,11 +8,13 @@ import {
   taskSchema,
   type TaskFormValues,
 } from './taskSchema';
+import type { BoardMember } from '../../types/board';
 
 import './TaskForm.scss';
 
 type TaskFormProps = {
   defaultValues: TaskFormValues;
+  members: BoardMember[];
   submitLabel: string;
   onSubmit: (values: TaskFormValues) => void | Promise<void>;
   onCancel: () => void;
@@ -21,6 +23,7 @@ type TaskFormProps = {
 
 function TaskForm({
   defaultValues,
+  members,
   submitLabel,
   onSubmit,
   onCancel,
@@ -42,7 +45,6 @@ function TaskForm({
       ...values,
       title: values.title.trim(),
       description: values.description.trim(),
-      assignee: values.assignee.trim(),
     });
   }
 
@@ -93,18 +95,23 @@ function TaskForm({
           Assignee
         </label>
 
-        <input
+        <select
           id="task-assignee"
           className="task-form__input"
-          type="text"
-          placeholder="Enter assignee"
           disabled={submitting}
-          {...register('assignee')}
-        />
+          {...register('assigneeId')}
+        >
+          <option value="">Unassigned</option>
+          {members.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name} ({member.email})
+            </option>
+          ))}
+        </select>
 
-        {errors.assignee && (
+        {errors.assigneeId && (
           <p className="task-form__error">
-            {errors.assignee.message}
+            {errors.assigneeId.message}
           </p>
         )}
       </div>

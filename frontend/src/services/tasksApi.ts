@@ -6,11 +6,15 @@ type CreateTaskData = {
   columnId: string;
   title: string;
   description: string;
+  assigneeId: string | null;
+  deadline: string | null;
 };
 
 type UpdateTaskData = {
   title: string;
   description: string;
+  assigneeId: string | null;
+  deadline: string | null;
 };
 
 type MoveTaskData = {

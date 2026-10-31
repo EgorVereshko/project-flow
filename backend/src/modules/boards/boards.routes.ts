@@ -34,6 +34,7 @@ type TaskRow = {
   title: string;
   description: string;
   position: number;
+  assignee_id: string | null;
   deadline: Date | null;
   assignee_name: string | null;
 };
@@ -51,6 +52,7 @@ type ApiBoard = {
       id: string;
       title: string;
       description: string;
+      assigneeId: string | null;
       assignee: string;
       deadline: string | null;
     }[];
@@ -101,6 +103,7 @@ async function loadBoards(
        t.title,
        t.description,
        t.position,
+       t.assignee_id,
        t.deadline,
        u.name AS assignee_name
      FROM tasks t
@@ -131,8 +134,9 @@ async function loadBoards(
         id: task.id,
         title: task.title,
         description: task.description,
+        assigneeId: task.assignee_id,
         assignee: task.assignee_name ?? '',
-        deadline: task.deadline?.toISOString() ?? null,
+        deadline: task.deadline?.toISOString().slice(0, 10) ?? null,
       })),
     });
 
@@ -262,6 +266,40 @@ router.get('/:boardId', async (req, res) => {
   }
 
   return res.json({ board });
+});
+
+router.get('/:boardId/members', async (req, res) => {
+  if (!isUuid(req.params.boardId)) {
+    return res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Provide a valid board ID' },
+    });
+  }
+
+  const result = await pool.query<{
+    id: string;
+    name: string;
+    email: string;
+  }>(
+    `SELECT u.id, u.name, u.email
+     FROM board_members bm
+     JOIN users u ON u.id = bm.user_id
+     WHERE bm.board_id = $1 AND EXISTS (
+       SELECT 1
+       FROM board_members current_member
+       WHERE current_member.board_id = bm.board_id
+         AND current_member.user_id = $2
+     )
+     ORDER BY u.name, u.email`,
+    [req.params.boardId, getUserId(res)],
+  );
+
+  if (result.rowCount === 0) {
+    return res.status(404).json({
+      error: { code: 'BOARD_NOT_FOUND', message: 'Board not found' },
+    });
+  }
+
+  return res.json({ members: result.rows });
 });
 
 router.post('/', async (req, res) => {

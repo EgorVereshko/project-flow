@@ -18,18 +18,15 @@ export const taskSchema = z.object({
       'Description must be 500 characters or less',
     ),
 
-  assignee: z
-    .string()
-    .trim()
-    .min(1, 'Assignee is required')
-    .max(
-      100,
-      'Assignee must be 100 characters or less',
-    ),
+  assigneeId: z.union([
+    z.uuid(),
+    z.literal(''),
+  ]),
 
-  deadline: z
-    .string()
-    .nullable(),
+  deadline: z.union([
+    z.iso.date(),
+    z.literal(''),
+  ]),
 });
 
 export type TaskFormValues =

@@ -1,5 +1,5 @@
 import { apiRequest } from './api';
-import type { Board } from '../types/board';
+import type { Board, BoardMember } from '../types/board';
 
 type BoardFormData = {
   name: string;
@@ -28,6 +28,10 @@ type ColumnsResponse = {
   columns: BoardColumnRecord[];
 };
 
+type BoardMembersResponse = {
+  members: BoardMember[];
+};
+
 // Получить все доски пользователя
 export async function getBoards(
   accessToken: string,
@@ -53,6 +57,19 @@ export async function getBoard(
   );
 
   return response.board;
+}
+
+export async function getBoardMembers(
+  boardId: string,
+  accessToken: string,
+): Promise<BoardMember[]> {
+  const response = await apiRequest<BoardMembersResponse>(
+    `/api/boards/${boardId}/members`,
+    { method: 'GET' },
+    accessToken,
+  );
+
+  return response.members;
 }
 
 // Создать доску

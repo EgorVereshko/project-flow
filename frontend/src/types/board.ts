@@ -2,8 +2,15 @@ export type Task = {
   id: string;
   title: string;
   description: string;
+  assigneeId?: string | null;
   assignee: string;
   deadline: string | null;
+};
+
+export type BoardMember = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 export type BoardColumn = {
