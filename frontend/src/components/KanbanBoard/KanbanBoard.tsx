@@ -72,12 +72,21 @@ type KanbanBoardProps = {
   initialColumns: BoardColumnType[];
 };
 
+type MoveTaskVariables = {
+  taskId: string;
+  columnId: string;
+  position: number;
+  previousColumns: BoardColumnType[];
+  optimisticColumns: BoardColumnType[];
+};
+
 function KanbanBoard({
   boardId,
   initialColumns,
 }: KanbanBoardProps) {
   const accessToken = useAuthStore((state) => state.accessToken);
   const queryClient = useQueryClient();
+  const boardQueryKey = ['board', boardId, accessToken] as const;
   const boardMembersQuery = useQuery({
     queryKey: ['board-members', boardId, accessToken],
     queryFn: () => getBoardMembers(boardId, accessToken!),
@@ -86,6 +95,9 @@ function KanbanBoard({
 
   const [columns, setColumns] = useState(initialColumns);
   const columnsRef = useRef(initialColumns);
+  const dragSnapshotRef = useRef<BoardColumnType[] | null>(null);
+  const activeDragTaskIdRef = useRef<string | null>(null);
+  const movePendingRef = useRef(false);
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -95,24 +107,93 @@ function KanbanBoard({
   const [taskError, setTaskError] = useState<string | null>(null);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [isSavingColumn, setIsSavingColumn] = useState(false);
+  const [isSavingMove, setIsSavingMove] = useState(false);
 
-  function applyColumns(next: BoardColumnType[]) {
+  function applyColumns(
+    next: BoardColumnType[],
+    updateCache = true,
+  ) {
     columnsRef.current = next;
     setColumns(next);
-    queryClient.setQueryData<Board>(
-      ['board', boardId, accessToken],
-      (board) => board
-        ? {
-            ...board,
-            columns: next,
-            tasksCount: next.reduce(
-              (total, column) => total + column.tasks.length,
-              0,
-            ),
-          }
-        : board,
-    );
+    if (updateCache) {
+      queryClient.setQueryData<Board>(
+        boardQueryKey,
+        (board) => board
+          ? {
+              ...board,
+              columns: next,
+              tasksCount: next.reduce(
+                (total, column) => total + column.tasks.length,
+                0,
+              ),
+            }
+          : board,
+      );
+    }
   }
+
+  const moveTaskMutation = useMutation({
+    mutationFn: ({
+      taskId,
+      columnId,
+      position,
+    }: MoveTaskVariables) => {
+      if (!accessToken) {
+        throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
+      }
+
+      return moveTaskApi(taskId, { columnId, position }, accessToken);
+    },
+    onMutate: async ({ previousColumns, optimisticColumns }) => {
+      await queryClient.cancelQueries({ queryKey: boardQueryKey });
+
+      const previousBoard = queryClient.getQueryData<Board>(boardQueryKey);
+      if (previousBoard) {
+        queryClient.setQueryData<Board>(boardQueryKey, {
+          ...previousBoard,
+          columns: optimisticColumns,
+        });
+      }
+
+      columnsRef.current = optimisticColumns;
+      setColumns(optimisticColumns);
+
+      return { previousBoard, previousColumns };
+    },
+    onError: (_error, variables, context) => {
+      if (context?.previousBoard) {
+        queryClient.setQueryData(boardQueryKey, context.previousBoard);
+      }
+
+      const restoredColumns =
+        context?.previousColumns
+        ?? variables.previousColumns
+        ?? dragSnapshotRef.current
+        ?? columnsRef.current;
+      columnsRef.current = restoredColumns;
+      setColumns(restoredColumns);
+      setTaskError(
+        'Не удалось сохранить перемещение задачи. Порядок восстановлен; попробуй ещё раз.',
+      );
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: boardQueryKey,
+        exact: true,
+      });
+
+      const savedBoard = queryClient.getQueryData<Board>(boardQueryKey);
+      if (savedBoard) {
+        columnsRef.current = savedBoard.columns;
+        setColumns(savedBoard.columns);
+      }
+    },
+    onSettled: () => {
+      movePendingRef.current = false;
+      dragSnapshotRef.current = null;
+      setIsSavingMove(false);
+    },
+  });
 
   const createTaskMutation = useMutation({
     mutationFn: (data: {
@@ -214,12 +295,33 @@ function KanbanBoard({
   });
 
   function handleDragStart(event: DragStartEvent) {
+    if (
+      movePendingRef.current
+      || isSavingTask
+      || isSavingColumn
+      || modalMode !== null
+    ) {
+      return;
+    }
+
+    const snapshot = columnsRef.current.map((column) => ({
+      ...column,
+      tasks: [...column.tasks],
+    }));
+    dragSnapshotRef.current = snapshot;
+    activeDragTaskIdRef.current = String(event.active.id);
     setActiveTaskId(String(event.active.id));
   }
 
   function handleDragOver(event: DragOverEvent) {
     const { active, over } = event;
-    if (!over) return;
+    if (
+      !over
+      || movePendingRef.current
+      || activeDragTaskIdRef.current !== String(active.id)
+    ) {
+      return;
+    }
 
     const activeId = String(active.id);
     const overId = String(over.id);
@@ -245,100 +347,130 @@ function KanbanBoard({
         targetColumn.id,
         targetIndex >= 0 ? targetIndex : undefined,
       ),
+      false,
     );
   }
 
-  
-async function handleDragEnd(event: DragEndEvent) {
-  const { active, over } = event;
-  setActiveTaskId(null);
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    const activeId = String(active.id);
+    const snapshot = dragSnapshotRef.current;
+    const isCurrentDrag = activeDragTaskIdRef.current === activeId;
 
-  if (!over || !accessToken) return;
+    setActiveTaskId(null);
+    activeDragTaskIdRef.current = null;
 
-  const activeId = String(active.id);
-  const overId = String(over.id);
-  const currentColumns = columnsRef.current;
+    if (!isCurrentDrag || !snapshot) return;
 
-  // После handleDragOver задача уже может находиться
-  // в колонке назначения.
-  const activeColumn = findColumnByTaskId(currentColumns, activeId);
+    if (!over || !accessToken) {
+      columnsRef.current = snapshot;
+      setColumns(snapshot);
+      dragSnapshotRef.current = null;
+      return;
+    }
 
-  if (!activeColumn) return;
+    const overId = String(over.id);
+    const currentColumns = columnsRef.current;
+    const activeColumn = findColumnByTaskId(currentColumns, activeId);
 
-  const overTaskColumn = findColumnByTaskId(currentColumns, overId);
+    if (!activeColumn) {
+      columnsRef.current = snapshot;
+      setColumns(snapshot);
+      dragSnapshotRef.current = null;
+      return;
+    }
 
-  // Меняем порядок только при отпускании над другой задачей.
-  // Если overId — ID колонки, newIndex будет -1,
-  // но это не должно прерывать сохранение перемещения.
-  if (
-    overTaskColumn &&
-    overTaskColumn.id === activeColumn.id &&
-    overId !== activeId
-  ) {
-    const oldIndex = activeColumn.tasks.findIndex(
-      (task) => task.id === activeId,
-    );
-
-    const newIndex = activeColumn.tasks.findIndex(
-      (task) => task.id === overId,
-    );
+    const overTaskColumn = findColumnByTaskId(currentColumns, overId);
 
     if (
-      oldIndex >= 0 &&
-      newIndex >= 0 &&
-      oldIndex !== newIndex
+      overTaskColumn
+      && overTaskColumn.id === activeColumn.id
+      && overId !== activeId
     ) {
-      const nextColumns = currentColumns.map((column) =>
-        column.id === activeColumn.id
-          ? {
-              ...column,
-              tasks: arrayMove(column.tasks, oldIndex, newIndex),
-            }
-          : column,
+      const oldIndex = activeColumn.tasks.findIndex(
+        (task) => task.id === activeId,
+      );
+      const newIndex = activeColumn.tasks.findIndex(
+        (task) => task.id === overId,
       );
 
-      applyColumns(nextColumns);
+      if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
+        applyColumns(
+          currentColumns.map((column) =>
+            column.id === activeColumn.id
+              ? {
+                  ...column,
+                  tasks: arrayMove(column.tasks, oldIndex, newIndex),
+                }
+              : column,
+          ),
+          false,
+        );
+      }
+    }
+
+    const destinationColumn = findColumnByTaskId(
+      columnsRef.current,
+      activeId,
+    );
+    const newPosition = destinationColumn?.tasks.findIndex(
+      (task) => task.id === activeId,
+    ) ?? -1;
+
+    if (!destinationColumn || newPosition < 0) {
+      columnsRef.current = snapshot;
+      setColumns(snapshot);
+      dragSnapshotRef.current = null;
+      return;
+    }
+
+    const originalColumn = findColumnByTaskId(snapshot, activeId);
+    const originalPosition = originalColumn?.tasks.findIndex(
+      (task) => task.id === activeId,
+    ) ?? -1;
+
+    if (
+      originalColumn?.id === destinationColumn.id
+      && originalPosition === newPosition
+    ) {
+      dragSnapshotRef.current = null;
+      return;
+    }
+
+    movePendingRef.current = true;
+    setIsSavingMove(true);
+    setTaskError(null);
+
+    try {
+      await moveTaskMutation.mutateAsync({
+        taskId: activeId,
+        columnId: destinationColumn.id,
+        position: newPosition,
+        previousColumns: snapshot,
+        optimisticColumns: columnsRef.current.map((column) => ({
+          ...column,
+          tasks: [...column.tasks],
+        })),
+      });
+    } catch {
+      // The mutation's onError restores the snapshot and reports the failure.
     }
   }
 
-  // Определяем конечную колонку по фактическому
-  // расположению задачи после drag-and-drop.
-  const destinationColumn = findColumnByTaskId(
-    columnsRef.current,
-    activeId,
-  );
-
-  if (!destinationColumn) return;
-
-  const newPosition = destinationColumn.tasks.findIndex(
-    (task) => task.id === activeId,
-  );
-
-  if (newPosition < 0) return;
-
-  try {
-    await moveTaskApi(
-      activeId,
-      {
-        columnId: destinationColumn.id,
-        position: newPosition,
-      },
-      accessToken,
-    );
-  } catch (error) {
-    console.error('Failed to move task:', error);
-
-    setTaskError(
-      'Не удалось сохранить перемещение задачи. Попробуй ещё раз.',
-    );
-  }
-}
-
   function handleDragCancel() {
     setActiveTaskId(null);
+    activeDragTaskIdRef.current = null;
+
+    const snapshot = dragSnapshotRef.current;
+    if (snapshot) {
+      columnsRef.current = snapshot;
+      setColumns(snapshot);
+      dragSnapshotRef.current = null;
+    }
   }
 
   function openCreateTaskModal(columnId: string) {
+    if (movePendingRef.current || activeDragTaskIdRef.current) return;
     setCreateColumnId(columnId);
     setEditingTaskId(null);
     setTaskError(null);
@@ -346,6 +478,7 @@ async function handleDragEnd(event: DragEndEvent) {
   }
 
   function openEditTaskModal(taskId: string) {
+    if (movePendingRef.current || activeDragTaskIdRef.current) return;
     setEditingTaskId(taskId);
     setCreateColumnId(null);
     setTaskError(null);
@@ -593,7 +726,7 @@ async function handleDragEnd(event: DragEndEvent) {
         <Button
           variant="secondary"
           onClick={openCreateColumnModal}
-          disabled={isSavingColumn}
+          disabled={isSavingColumn || isSavingMove}
         >
           + Add Column
         </Button>
@@ -626,7 +759,7 @@ async function handleDragEnd(event: DragEndEvent) {
               }
               columnIndex={columns.indexOf(column)}
               columnCount={columns.length}
-              isSaving={isSavingColumn}
+              isSaving={isSavingColumn || isSavingMove}
             />
           ))}
         </div>
