@@ -3,6 +3,7 @@ import { Router } from 'express';
 import type { PoolClient } from 'pg';
 
 import { pool } from '../../config/db.js';
+import { isUuid, validateUuidParam } from '../../middleware/validateUuid.js';
 import { authenticate } from '../auth/auth.middleware.js';
 
 const router = Router();
@@ -173,11 +174,6 @@ function validationError(res: Parameters<typeof authenticate>[1]) {
   });
 }
 
-function isUuid(value: unknown): value is string {
-  return typeof value === 'string'
-    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
 async function lockBoardForMember(
   client: PoolClient,
   boardId: string,
@@ -245,6 +241,8 @@ async function normalizeColumnPositions(
 }
 
 router.use(authenticate);
+router.param('boardId', validateUuidParam('Board ID'));
+router.param('columnId', validateUuidParam('Column ID'));
 
 router.get('/', async (_req, res) => {
   const boards = await loadBoards(getUserId(res));
@@ -269,12 +267,6 @@ router.get('/:boardId', async (req, res) => {
 });
 
 router.get('/:boardId/members', async (req, res) => {
-  if (!isUuid(req.params.boardId)) {
-    return res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Provide a valid board ID' },
-    });
-  }
-
   const result = await pool.query<{
     id: string;
     name: string;
@@ -430,7 +422,7 @@ router.post('/:boardId/columns', async (req, res) => {
   const title =
     typeof req.body?.title === 'string' ? req.body.title.trim() : '';
 
-  if (!isUuid(boardId) || !title || title.length > 100) {
+  if (!title || title.length > 100) {
     return res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
@@ -475,8 +467,7 @@ router.patch('/:boardId/columns/order', async (req, res) => {
   const { columnIds } = req.body ?? {};
 
   if (
-    !isUuid(boardId)
-    || !Array.isArray(columnIds)
+    !Array.isArray(columnIds)
     || columnIds.length === 0
     || !columnIds.every(isUuid)
     || new Set(columnIds).size !== columnIds.length
@@ -548,9 +539,7 @@ router.patch('/:boardId/columns/:columnId', async (req, res) => {
     typeof req.body?.title === 'string' ? req.body.title.trim() : '';
 
   if (
-    !isUuid(boardId)
-    || !isUuid(columnId)
-    || !title
+    !title
     || title.length > 100
   ) {
     return res.status(400).json({
@@ -600,15 +589,6 @@ router.patch('/:boardId/columns/:columnId', async (req, res) => {
 
 router.delete('/:boardId/columns/:columnId', async (req, res) => {
   const { boardId, columnId } = req.params;
-
-  if (!isUuid(boardId) || !isUuid(columnId)) {
-    return res.status(400).json({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Provide valid board and column IDs',
-      },
-    });
-  }
 
   const client = await pool.connect();
 

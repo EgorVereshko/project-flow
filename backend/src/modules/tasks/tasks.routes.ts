@@ -1,20 +1,13 @@
 
 import { Router } from 'express';
 import { pool } from '../../config/db.js';
+import { isUuid, validateUuidParam } from '../../middleware/validateUuid.js';
 import { authenticate } from '../auth/auth.middleware.js';
 
 const router = Router();
 
 router.use(authenticate);
-
-function getUserId(res: Parameters<typeof authenticate>[1]): string {
-  return res.locals.userId as string;
-}
-
-function isUuid(value: unknown): value is string {
-  return typeof value === 'string'
-    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
+router.param('taskId', validateUuidParam('Task ID'));
 
 function isDateOnly(value: unknown): value is string {
   if (
@@ -27,6 +20,10 @@ function isDateOnly(value: unknown): value is string {
   const date = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(date.getTime())
     && date.toISOString().slice(0, 10) === value;
+}
+
+function getUserId(res: Parameters<typeof authenticate>[1]): string {
+  return res.locals.userId as string;
 }
 
 async function getBoardIdForColumn(
@@ -322,7 +319,7 @@ router.patch('/:taskId/move', async (req, res) => {
   const userId = getUserId(res);
 
   if (
-    !columnId ||
+    !isUuid(columnId) ||
     !Number.isInteger(position) ||
     position < 0
   ) {
