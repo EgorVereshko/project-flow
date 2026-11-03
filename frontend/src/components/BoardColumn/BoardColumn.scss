@@ -147,3 +147,22 @@
 .board-column__menu-item--danger:hover {
   background-color: rgb(220 38 38 / 8%);
 }
+
+.board-column__status-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.board-column__status-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}

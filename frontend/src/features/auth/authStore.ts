@@ -30,6 +30,7 @@ interface AuthState {
   register: (name: string, email: string, password: string) => Promise<void>;
   refreshSession: () => Promise<void>;
   refreshAccessToken: (expiredToken: string) => Promise<string | null>;
+  setUserName: (name: string) => void;
   logout: () => Promise<void>;
 }
 
@@ -87,6 +88,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ status: 'loading' });
     await get().refreshAccessToken('');
+  },
+
+  setUserName: (name) => {
+    set((state) => ({
+      user: state.user ? { ...state.user, name } : state.user,
+    }));
   },
 
   refreshAccessToken: async (expiredToken) => {

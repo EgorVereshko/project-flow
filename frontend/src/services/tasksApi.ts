@@ -1,6 +1,6 @@
 
 import { apiRequest } from './api';
-import type { Task } from '../types/board';
+import type { Task, TaskPriority } from '../types/board';
 
 type CreateTaskData = {
   columnId: string;
@@ -8,6 +8,7 @@ type CreateTaskData = {
   description: string;
   assigneeId: string | null;
   deadline: string | null;
+  priority: TaskPriority;
 };
 
 type UpdateTaskData = {
@@ -15,6 +16,7 @@ type UpdateTaskData = {
   description: string;
   assigneeId: string | null;
   deadline: string | null;
+  priority: TaskPriority;
 };
 
 type MoveTaskData = {

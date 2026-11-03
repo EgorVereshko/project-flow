@@ -7,6 +7,7 @@ import RegisterPage from '@/pages/Register/RegisterPage';
 import DashboardPage from '@/pages/Dashboard/DashboardPage';
 import BoardsPage from '@/pages/Boards/BoardsPage';
 import BoardPage from '@/pages/Board/BoardPage';
+import ProfilePage from '@/pages/Profile/ProfilePage';
 
 import {
   ProtectedRoute,
@@ -37,6 +38,10 @@ export const router = createBrowserRouter([
       {
         path: 'boards/:boardId',
         element: <BoardPage />,
+      },
+      {
+        path: 'profile',
+        element: <ProfilePage />,
       },
     ],
   },

@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS board_columns (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     title VARCHAR(100) NOT NULL,
+    workflow_status VARCHAR(20) NOT NULL DEFAULT 'todo'
+        CHECK (workflow_status IN ('todo', 'in_progress', 'done')),
     position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -60,6 +62,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     column_id UUID NOT NULL REFERENCES board_columns(id) ON DELETE CASCADE,
     title VARCHAR(200) NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    priority VARCHAR(20) NOT NULL DEFAULT 'medium'
+        CHECK (priority IN ('low', 'medium', 'high')),
     position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
     deadline TIMESTAMPTZ,
     assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -73,6 +77,9 @@ CREATE INDEX IF NOT EXISTS idx_tasks_column_position
 
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee_id
     ON tasks(assignee_id);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_created_by_id
+    ON tasks(created_by_id);
 
 CREATE TABLE IF NOT EXISTS comments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

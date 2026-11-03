@@ -32,10 +32,10 @@ function Sidebar() {
 
       <div className="sidebar__footer">
         {user && (
-          <div className="sidebar__user">
+          <NavLink to="/profile" className="sidebar__user">
             <strong>{user.name}</strong>
             <span>{user.email}</span>
-          </div>
+          </NavLink>
         )}
 
         <button

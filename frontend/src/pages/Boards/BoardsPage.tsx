@@ -18,6 +18,7 @@ import {
 } from '../../services/boardsApi';
 
 import type { Board } from '../../types/board';
+import { PROFILE_QUERY_KEY } from '../../services/profileApi';
 
 import './BoardsPage.scss';
 
@@ -50,6 +51,7 @@ function BoardsPage() {
       createBoard(values, accessToken!),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: BOARDS_QUERY_KEY });
+      await queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
       closeModal();
     },
     onError: () => {
@@ -67,6 +69,7 @@ function BoardsPage() {
     }) => updateBoard(boardId, values, accessToken!),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: BOARDS_QUERY_KEY });
+      await queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
       closeModal();
     },
     onError: () => {
@@ -78,6 +81,7 @@ function BoardsPage() {
     mutationFn: (boardId: string) => deleteBoard(boardId, accessToken!),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: BOARDS_QUERY_KEY });
+      await queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
     },
     onError: () => {
       setActionError('Не удалось удалить доску. Попробуйте ещё раз.');

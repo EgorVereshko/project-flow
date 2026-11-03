@@ -27,6 +27,8 @@ export const taskSchema = z.object({
     z.iso.date(),
     z.literal(''),
   ]),
+
+  priority: z.enum(['low', 'medium', 'high']),
 });
 
 export type TaskFormValues =

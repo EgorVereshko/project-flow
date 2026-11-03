@@ -63,6 +63,7 @@ router.post('/', async (req, res) => {
   const hasDescription = req.body?.description !== undefined;
   const assigneeId = req.body?.assigneeId ?? null;
   const deadlineInput = req.body?.deadline ?? null;
+  const priority = req.body?.priority ?? 'medium';
 
   if (
     !columnId ||
@@ -72,7 +73,8 @@ router.post('/', async (req, res) => {
     (hasDescription && typeof req.body.description !== 'string') ||
     description.length > 10_000 ||
     (assigneeId !== null && !isUuid(assigneeId)) ||
-    (deadlineInput !== null && !isDateOnly(deadlineInput))
+    (deadlineInput !== null && !isDateOnly(deadlineInput)) ||
+    !['low', 'medium', 'high'].includes(priority)
   ) {
     return res.status(400).json({
       error: {
@@ -114,17 +116,19 @@ router.post('/', async (req, res) => {
     description: string;
     assignee_id: string | null;
     deadline: Date | null;
+    priority: 'low' | 'medium' | 'high';
   }>(
     `INSERT INTO tasks (
        column_id, title, description, position, created_by_id,
-       assignee_id, deadline
+       assignee_id, deadline, priority
      )
      VALUES (
        $1, $2, $3,
        (SELECT COUNT(*)::int FROM tasks WHERE column_id = $1),
-       $4, $5, $6
+       $4, $5, $6, $7
      )
-     RETURNING id, column_id, title, description, assignee_id, deadline`,
+     RETURNING id, column_id, title, description, assignee_id, deadline,
+               priority`,
     [
       columnId,
       title,
@@ -132,6 +136,7 @@ router.post('/', async (req, res) => {
       userId,
       assigneeId,
       deadlineInput ? new Date(`${deadlineInput}T00:00:00.000Z`) : null,
+      priority,
     ],
   );
 
@@ -146,6 +151,7 @@ router.post('/', async (req, res) => {
       assigneeId: task.assignee_id,
       assignee: assigneeName ?? '',
       deadline: task.deadline?.toISOString().slice(0, 10) ?? null,
+      priority: task.priority,
     },
   });
 });
@@ -166,6 +172,8 @@ router.patch('/:taskId', async (req, res) => {
   const assigneeId = hasAssigneeId ? req.body.assigneeId : undefined;
   const hasDeadline = Object.hasOwn(req.body ?? {}, 'deadline');
   const deadlineInput = hasDeadline ? req.body.deadline : undefined;
+  const hasPriority = Object.hasOwn(req.body ?? {}, 'priority');
+  const priority = hasPriority ? req.body.priority : undefined;
 
   if (
     (
@@ -173,6 +181,7 @@ router.patch('/:taskId', async (req, res) => {
       && description === undefined
       && !hasAssigneeId
       && !hasDeadline
+      && !hasPriority
     ) ||
     (hasTitle && typeof req.body.title !== 'string') ||
     (
@@ -190,6 +199,10 @@ router.patch('/:taskId', async (req, res) => {
       hasDeadline
       && deadlineInput !== null
       && !isDateOnly(deadlineInput)
+    ) ||
+    (
+      hasPriority
+      && !['low', 'medium', 'high'].includes(priority)
     )
   ) {
     return res.status(400).json({
@@ -236,15 +249,18 @@ router.patch('/:taskId', async (req, res) => {
     description: string;
     assignee_id: string | null;
     deadline: Date | null;
+    priority: 'low' | 'medium' | 'high';
   }>(
     `UPDATE tasks
      SET title = COALESCE($2, title),
          description = COALESCE($3, description),
          assignee_id = CASE WHEN $4 THEN $5::uuid ELSE assignee_id END,
          deadline = CASE WHEN $6 THEN $7::timestamptz ELSE deadline END,
+         priority = CASE WHEN $8 THEN $9 ELSE priority END,
          updated_at = NOW()
      WHERE id = $1
-     RETURNING id, column_id, title, description, assignee_id, deadline`,
+     RETURNING id, column_id, title, description, assignee_id, deadline,
+               priority`,
     [
       taskId,
       title ?? null,
@@ -255,6 +271,8 @@ router.patch('/:taskId', async (req, res) => {
       deadlineInput
         ? new Date(`${deadlineInput}T00:00:00.000Z`)
         : null,
+      hasPriority,
+      priority ?? null,
     ],
   );
 
@@ -272,6 +290,7 @@ router.patch('/:taskId', async (req, res) => {
       assigneeId: task.assignee_id,
       assignee: assigneeName ?? '',
       deadline: task.deadline?.toISOString().slice(0, 10) ?? null,
+      priority: task.priority,
     },
   });
 });

@@ -39,8 +39,10 @@ import {
   deleteBoardColumn,
   reorderBoardColumns,
   updateBoardColumn,
+  updateBoardColumnStatus,
 } from '../../services/boardsApi';
 import { getUsers } from '../../services/usersApi';
+import { PROFILE_QUERY_KEY } from '../../services/profileApi';
 
 import {
   addTaskToColumn,
@@ -56,6 +58,7 @@ import type {
   BoardColumn as BoardColumnType,
   Board,
   Task,
+  WorkflowStatus,
 } from '../../types/board';
 
 import './KanbanBoard.scss';
@@ -177,10 +180,15 @@ function KanbanBoard({
       );
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: boardQueryKey,
-        exact: true,
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: boardQueryKey,
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: PROFILE_QUERY_KEY,
+        }),
+      ]);
 
       const savedBoard = queryClient.getQueryData<Board>(boardQueryKey);
       if (savedBoard) {
@@ -202,6 +210,7 @@ function KanbanBoard({
       description: string;
       assigneeId: string | null;
       deadline: string | null;
+      priority: Task['priority'];
     }) => {
       if (!accessToken) {
         throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
@@ -220,7 +229,12 @@ function KanbanBoard({
     onSuccess: (column) => {
       applyColumns([
         ...columnsRef.current,
-        { id: column.id, title: column.title, tasks: [] },
+        {
+          id: column.id,
+          title: column.title,
+          workflowStatus: column.workflowStatus,
+          tasks: [],
+        },
       ]);
     },
   });
@@ -246,6 +260,7 @@ function KanbanBoard({
             : column,
         ),
       );
+      void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
     },
   });
 
@@ -264,11 +279,18 @@ function KanbanBoard({
         savedColumns.flatMap((column) => {
           const current = currentColumns.get(column.id);
           return current
-            ? [{ ...current, title: column.title }]
+            ? [
+                {
+                  ...current,
+                  title: column.title,
+                  workflowStatus: column.workflowStatus,
+                },
+              ]
             : [];
         }),
       );
       void queryClient.invalidateQueries({ queryKey: ['boards'] });
+      void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
     },
   });
 
@@ -287,10 +309,46 @@ function KanbanBoard({
         savedColumns.flatMap((column) => {
           const current = currentColumns.get(column.id);
           return current
-            ? [{ ...current, title: column.title }]
+            ? [
+                {
+                  ...current,
+                  title: column.title,
+                  workflowStatus: column.workflowStatus,
+                },
+              ]
             : [];
         }),
       );
+    },
+  });
+
+  const updateColumnStatusMutation = useMutation({
+    mutationFn: ({
+      columnId,
+      workflowStatus,
+    }: {
+      columnId: string;
+      workflowStatus: WorkflowStatus;
+    }) => {
+      if (!accessToken) {
+        throw new Error('Сессия не найдена. Войди в аккаунт ещё раз.');
+      }
+      return updateBoardColumnStatus(
+        boardId,
+        columnId,
+        workflowStatus,
+        accessToken,
+      );
+    },
+    onSuccess: (updatedColumn) => {
+      applyColumns(
+        columnsRef.current.map((column) =>
+          column.id === updatedColumn.id
+            ? { ...column, workflowStatus: updatedColumn.workflowStatus }
+            : column,
+        ),
+      );
+      void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
     },
   });
 
@@ -519,12 +577,14 @@ function KanbanBoard({
         description: values.description,
         assigneeId: values.assigneeId || null,
         deadline: values.deadline || null,
+        priority: values.priority,
       });
 
       applyColumns(
         addTaskToColumn(columnsRef.current, createColumnId, newTask),
       );
       void queryClient.invalidateQueries({ queryKey: ['boards'] });
+      void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
       closeModal();
     } catch {
       setTaskError('Не удалось создать задачу. Попробуй ещё раз.');
@@ -555,6 +615,7 @@ function KanbanBoard({
           description: values.description,
           assigneeId: values.assigneeId || null,
           deadline: values.deadline || null,
+          priority: values.priority,
         },
         accessToken,
       );
@@ -569,6 +630,7 @@ function KanbanBoard({
       applyColumns(
         updateTask(columnsRef.current, editingTaskId, updatedTask),
       );
+      void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
       closeModal();
     } catch {
       setTaskError('Не удалось сохранить задачу. Проверь подключение.');
@@ -597,6 +659,7 @@ function KanbanBoard({
       await deleteTaskApi(taskId, accessToken);
       applyColumns(deleteTask(columnsRef.current, taskId));
       void queryClient.invalidateQueries({ queryKey: ['boards'] });
+      void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
       closeModal();
     } catch {
       applyColumns(previousColumns);
@@ -634,6 +697,25 @@ function KanbanBoard({
       closeModal();
     } catch {
       setTaskError('Не удалось переименовать колонку. Попробуй ещё раз.');
+    } finally {
+      setIsSavingColumn(false);
+    }
+  }
+
+  async function handleSetColumnWorkflowStatus(
+    columnId: string,
+    workflowStatus: WorkflowStatus,
+  ) {
+    setTaskError(null);
+    setIsSavingColumn(true);
+
+    try {
+      await updateColumnStatusMutation.mutateAsync({
+        columnId,
+        workflowStatus,
+      });
+    } catch {
+      setTaskError('Не удалось изменить статус колонки. Попробуй ещё раз.');
     } finally {
       setIsSavingColumn(false);
     }
@@ -756,6 +838,9 @@ function KanbanBoard({
               onEditTask={openEditTaskModal}
               onEditColumn={openEditColumnModal}
               onDeleteColumn={(columnId) => void handleDeleteColumn(columnId)}
+              onSetWorkflowStatus={(columnId, status) =>
+                void handleSetColumnWorkflowStatus(columnId, status)
+              }
               onMoveColumn={(columnId, direction) =>
                 void handleMoveColumn(columnId, direction)
               }
@@ -797,6 +882,7 @@ function KanbanBoard({
                 description: '',
                 assigneeId: '',
                 deadline: '',
+                priority: 'medium',
               }}
               submitLabel={isSavingTask ? 'Creating...' : 'Create Task'}
               onSubmit={handleCreateTask}
@@ -832,6 +918,7 @@ function KanbanBoard({
                 description: editingTask.description,
                 assigneeId: editingTask.assigneeId ?? '',
                 deadline: editingTask.deadline ?? '',
+                priority: editingTask.priority,
               }}
               submitLabel={isSavingTask ? 'Saving...' : 'Save Changes'}
               onSubmit={handleUpdateTask}

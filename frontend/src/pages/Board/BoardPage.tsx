@@ -7,6 +7,7 @@ import KanbanBoard from '../../components/KanbanBoard/KanbanBoard';
 
 import { useAuthStore } from '../../features/auth/authStore';
 import { getBoard, updateBoard } from '../../services/boardsApi';
+import { PROFILE_QUERY_KEY } from '../../services/profileApi';
 
 import './BoardPage.scss';
 
@@ -38,6 +39,9 @@ function BoardPage() {
 
       await queryClient.invalidateQueries({
         queryKey: ['boards'],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: PROFILE_QUERY_KEY,
       });
 
       setEditError(null);

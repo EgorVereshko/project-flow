@@ -20,12 +20,23 @@ type ColumnRow = {
   id: string;
   board_id: string;
   title: string;
+  workflow_status: WorkflowStatus;
   position: number;
 };
+
+type ColumnRecord = {
+  id: string;
+  title: string;
+  workflow_status: WorkflowStatus;
+  position: number;
+};
+
+type WorkflowStatus = 'todo' | 'in_progress' | 'done';
 
 type ApiColumn = {
   id: string;
   title: string;
+  workflowStatus: WorkflowStatus;
   position: number;
 };
 
@@ -38,6 +49,7 @@ type TaskRow = {
   assignee_id: string | null;
   deadline: Date | null;
   assignee_name: string | null;
+  priority: 'low' | 'medium' | 'high';
 };
 
 type ApiBoard = {
@@ -49,6 +61,7 @@ type ApiBoard = {
   columns: {
     id: string;
     title: string;
+    workflowStatus: WorkflowStatus;
     tasks: {
       id: string;
       title: string;
@@ -56,6 +69,7 @@ type ApiBoard = {
       assigneeId: string | null;
       assignee: string;
       deadline: string | null;
+      priority: 'low' | 'medium' | 'high';
     }[];
   }[];
 };
@@ -88,7 +102,7 @@ async function loadBoards(
   const boardIds = boards.map((board) => board.id);
 
   const columnResult = await pool.query<ColumnRow>(
-    `SELECT id, board_id, title, position
+    `SELECT id, board_id, title, workflow_status, position
      FROM board_columns
      WHERE board_id = ANY($1::uuid[])
      ORDER BY position ASC`,
@@ -104,6 +118,7 @@ async function loadBoards(
        t.position,
        t.assignee_id,
        t.deadline,
+       t.priority,
        u.name AS assignee_name
      FROM tasks t
      JOIN board_columns bc ON bc.id = t.column_id
@@ -129,6 +144,7 @@ async function loadBoards(
     columns.push({
       id: column.id,
       title: column.title,
+      workflowStatus: column.workflow_status,
       tasks: (tasksByColumn.get(column.id) ?? []).map((task) => ({
         id: task.id,
         title: task.title,
@@ -136,6 +152,7 @@ async function loadBoards(
         assigneeId: task.assignee_id,
         assignee: task.assignee_name ?? '',
         deadline: task.deadline?.toISOString().slice(0, 10) ?? null,
+        priority: task.priority,
       })),
     });
 
@@ -192,8 +209,8 @@ async function normalizeColumnPositions(
   boardId: string,
   orderedIds?: string[],
 ): Promise<ApiColumn[]> {
-  const result = await client.query<ApiColumn>(
-    `SELECT id, title, position
+  const result = await client.query<ColumnRecord>(
+    `SELECT id, title, workflow_status, position
      FROM board_columns
      WHERE board_id = $1
      ORDER BY position ASC
@@ -225,15 +242,20 @@ async function normalizeColumnPositions(
     );
   }
 
-  const normalized = await client.query<ApiColumn>(
-    `SELECT id, title, position
+  const normalized = await client.query<ColumnRecord>(
+    `SELECT id, title, workflow_status, position
      FROM board_columns
      WHERE board_id = $1
      ORDER BY position ASC`,
     [boardId],
   );
 
-  return normalized.rows;
+  return normalized.rows.map((column) => ({
+    id: column.id,
+    title: column.title,
+    workflowStatus: column.workflow_status,
+    position: column.position,
+  }));
 }
 
 router.use(authenticate);
@@ -332,11 +354,13 @@ router.post('/', async (req, res) => {
     );
 
     await client.query(
-      `INSERT INTO board_columns (board_id, title, position)
+      `INSERT INTO board_columns (
+         board_id, title, position, workflow_status
+       )
        VALUES
-         ($1, 'To Do', 0),
-         ($1, 'In Progress', 1),
-         ($1, 'Done', 2)`,
+         ($1, 'To Do', 0, 'todo'),
+         ($1, 'In Progress', 1, 'in_progress'),
+         ($1, 'Done', 2, 'done')`,
       [boardId],
     );
 
@@ -439,17 +463,25 @@ router.post('/:boardId/columns', async (req, res) => {
       });
     }
 
-    const result = await client.query<ApiColumn>(
+    const result = await client.query<ColumnRecord>(
       `INSERT INTO board_columns (board_id, title, position)
        SELECT $1, $2, (COALESCE(MAX(position), -1) + 1)::int
        FROM board_columns
        WHERE board_id = $1
-       RETURNING id, title, position`,
+       RETURNING id, title, workflow_status, position`,
       [boardId, title],
     );
 
     await client.query('COMMIT');
-    return res.status(201).json({ column: result.rows[0] });
+    const column = result.rows[0];
+    return res.status(201).json({
+      column: {
+        id: column.id,
+        title: column.title,
+        workflowStatus: column.workflow_status,
+        position: column.position,
+      },
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
@@ -558,11 +590,11 @@ router.patch('/:boardId/columns/:columnId', async (req, res) => {
       });
     }
 
-    const result = await client.query<ApiColumn>(
+    const result = await client.query<ColumnRecord>(
       `UPDATE board_columns
        SET title = $3, updated_at = NOW()
        WHERE board_id = $1 AND id = $2
-       RETURNING id, title, position`,
+       RETURNING id, title, workflow_status, position`,
       [boardId, columnId, title],
     );
 
@@ -574,7 +606,15 @@ router.patch('/:boardId/columns/:columnId', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    return res.json({ column: result.rows[0] });
+    const column = result.rows[0];
+    return res.json({
+      column: {
+        id: column.id,
+        title: column.title,
+        workflowStatus: column.workflow_status,
+        position: column.position,
+      },
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
@@ -582,6 +622,51 @@ router.patch('/:boardId/columns/:columnId', async (req, res) => {
     client.release();
   }
 });
+
+router.patch(
+  '/:boardId/columns/:columnId/status',
+  async (req, res) => {
+    const { boardId, columnId } = req.params;
+    const workflowStatus = req.body?.workflowStatus;
+
+    if (
+      workflowStatus !== 'todo'
+      && workflowStatus !== 'in_progress'
+      && workflowStatus !== 'done'
+    ) {
+      return res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Provide a valid workflow status',
+        },
+      });
+    }
+
+    const result = await pool.query<ColumnRecord>(
+      `UPDATE board_columns
+       SET workflow_status = $3, updated_at = NOW()
+       WHERE board_id = $1 AND id = $2
+       RETURNING id, title, workflow_status, position`,
+      [boardId, columnId, workflowStatus],
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({
+        error: { code: 'COLUMN_NOT_FOUND', message: 'Column not found' },
+      });
+    }
+
+    const column = result.rows[0];
+    return res.json({
+      column: {
+        id: column.id,
+        title: column.title,
+        workflowStatus: column.workflow_status,
+        position: column.position,
+      },
+    });
+  },
+);
 
 router.delete('/:boardId/columns/:columnId', async (req, res) => {
   const { boardId, columnId } = req.params;

@@ -142,6 +142,29 @@ function TaskForm({
         )}
       </div>
 
+      <div className="task-form__field">
+        <label className="task-form__label" htmlFor="task-priority">
+          Priority
+        </label>
+
+        <select
+          id="task-priority"
+          className="task-form__input"
+          disabled={submitting}
+          {...register('priority')}
+        >
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+
+        {errors.priority && (
+          <p className="task-form__error">
+            {errors.priority.message}
+          </p>
+        )}
+      </div>
+
       <div className="task-form__actions">
         <Button
           type="button"

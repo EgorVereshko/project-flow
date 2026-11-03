@@ -18,6 +18,7 @@ export type BoardColumnRecord = {
   id: string;
   title: string;
   position: number;
+  workflowStatus: 'todo' | 'in_progress' | 'done';
 };
 
 type ColumnResponse = {
@@ -130,6 +131,24 @@ export async function updateBoardColumn(
     {
       method: 'PATCH',
       body: JSON.stringify({ title }),
+    },
+    accessToken,
+  );
+
+  return response.column;
+}
+
+export async function updateBoardColumnStatus(
+  boardId: string,
+  columnId: string,
+  workflowStatus: BoardColumnRecord['workflowStatus'],
+  accessToken: string,
+): Promise<BoardColumnRecord> {
+  const response = await apiRequest<ColumnResponse>(
+    `/api/boards/${boardId}/columns/${columnId}/status`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ workflowStatus }),
     },
     accessToken,
   );

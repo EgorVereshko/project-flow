@@ -8,6 +8,7 @@ import {
 
 import type {
   BoardColumn as BoardColumnType,
+  WorkflowStatus,
 } from '../../types/board';
 
 import Button from '../Button/Button';
@@ -27,6 +28,10 @@ type BoardColumnProps = {
   onDeleteColumn: (
     columnId: string,
   ) => void;
+  onSetWorkflowStatus: (
+    columnId: string,
+    status: WorkflowStatus,
+  ) => void;
   onMoveColumn: (
     columnId: string,
     direction: 'left' | 'right',
@@ -42,6 +47,7 @@ function BoardColumn({
   onEditTask,
   onEditColumn,
   onDeleteColumn,
+  onSetWorkflowStatus,
   onMoveColumn,
   columnIndex,
   columnCount,
@@ -84,6 +90,17 @@ function BoardColumn({
   function handleMoveColumn(direction: 'left' | 'right') {
     setIsMenuOpen(false);
     onMoveColumn(column.id, direction);
+  }
+
+  function handleWorkflowStatusChange(value: string) {
+    if (
+      value === 'todo'
+      || value === 'in_progress'
+      || value === 'done'
+    ) {
+      setIsMenuOpen(false);
+      onSetWorkflowStatus(column.id, value);
+    }
   }
 
   return (
@@ -158,6 +175,22 @@ function BoardColumn({
                 >
                   Rename column
                 </button>
+
+                <label className="board-column__status-label">
+                  Task status
+                  <select
+                    className="board-column__status-select"
+                    value={column.workflowStatus}
+                    disabled={isSaving}
+                    onChange={(event) =>
+                      handleWorkflowStatusChange(event.target.value)
+                    }
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                  </select>
+                </label>
 
                 <button
                   type="button"
