@@ -524,6 +524,7 @@ function KanbanBoard({
       applyColumns(
         addTaskToColumn(columnsRef.current, createColumnId, newTask),
       );
+      void queryClient.invalidateQueries({ queryKey: ['boards'] });
       closeModal();
     } catch {
       setTaskError('Не удалось создать задачу. Попробуй ещё раз.');
@@ -595,6 +596,7 @@ function KanbanBoard({
     try {
       await deleteTaskApi(taskId, accessToken);
       applyColumns(deleteTask(columnsRef.current, taskId));
+      void queryClient.invalidateQueries({ queryKey: ['boards'] });
       closeModal();
     } catch {
       applyColumns(previousColumns);

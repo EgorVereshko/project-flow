@@ -61,22 +61,20 @@ type ApiBoard = {
 };
 
 async function loadBoards(
-  userId: string,
   boardId?: string,
 ): Promise<ApiBoard[]> {
-  const values: string[] = [userId];
+  const values: string[] = [];
   let boardFilter = '';
 
   if (boardId) {
     values.push(boardId);
-    boardFilter = 'AND b.id = $2';
+    boardFilter = 'WHERE b.id = $1';
   }
 
   const boardResult = await pool.query<BoardRow>(
     `SELECT b.id, b.name, b.description, b.owner_id, b.created_at
      FROM boards b
-     JOIN board_members bm ON bm.board_id = b.id
-     WHERE bm.user_id = $1 ${boardFilter}
+     ${boardFilter}
      ORDER BY b.created_at DESC`,
     values,
   );
@@ -174,18 +172,16 @@ function validationError(res: Parameters<typeof authenticate>[1]) {
   });
 }
 
-async function lockBoardForMember(
+async function lockBoard(
   client: PoolClient,
   boardId: string,
-  userId: string,
 ): Promise<boolean> {
   const result = await client.query(
     `SELECT b.id
      FROM boards b
-     JOIN board_members bm ON bm.board_id = b.id
-     WHERE b.id = $1 AND bm.user_id = $2
+     WHERE b.id = $1
      FOR UPDATE OF b`,
-    [boardId, userId],
+    [boardId],
   );
 
   return result.rowCount !== null && result.rowCount > 0;
@@ -245,13 +241,13 @@ router.param('boardId', validateUuidParam('Board ID'));
 router.param('columnId', validateUuidParam('Column ID'));
 
 router.get('/', async (_req, res) => {
-  const boards = await loadBoards(getUserId(res));
+  const boards = await loadBoards();
 
   return res.json({ boards });
 });
 
 router.get('/:boardId', async (req, res) => {
-  const boards = await loadBoards(getUserId(res), req.params.boardId);
+  const boards = await loadBoards(req.params.boardId);
   const board = boards[0];
 
   if (!board) {
@@ -267,29 +263,29 @@ router.get('/:boardId', async (req, res) => {
 });
 
 router.get('/:boardId/members', async (req, res) => {
+  const boardResult = await pool.query(
+    'SELECT 1 FROM boards WHERE id = $1',
+    [req.params.boardId],
+  );
+
+  if (!boardResult.rowCount) {
+    return res.status(404).json({
+      error: { code: 'BOARD_NOT_FOUND', message: 'Board not found' },
+    });
+  }
+
   const result = await pool.query<{
     id: string;
     username: string;
     email: string;
   }>(
     `SELECT u.id, u.name AS username, u.email
-     FROM board_members bm
-     JOIN users u ON u.id = bm.user_id
-     WHERE bm.board_id = $1 AND EXISTS (
-       SELECT 1
-       FROM board_members current_member
-       WHERE current_member.board_id = bm.board_id
-         AND current_member.user_id = $2
-     )
-     ORDER BY u.name, u.email`,
-    [req.params.boardId, getUserId(res)],
+    FROM board_members bm
+    JOIN users u ON u.id = bm.user_id
+    WHERE bm.board_id = $1
+    ORDER BY u.name, u.email`,
+    [req.params.boardId],
   );
-
-  if (result.rowCount === 0) {
-    return res.status(404).json({
-      error: { code: 'BOARD_NOT_FOUND', message: 'Board not found' },
-    });
-  }
 
   return res.json({ members: result.rows });
 });
@@ -352,7 +348,7 @@ router.post('/', async (req, res) => {
     client.release();
   }
 
-  const boards = await loadBoards(userId, boardId);
+  const boards = await loadBoards(boardId);
 
   return res.status(201).json({ board: boards[0] });
 });
@@ -378,21 +374,21 @@ router.patch('/:boardId', async (req, res) => {
   const result = await pool.query<{ id: string }>(
     `UPDATE boards
      SET name = $1, description = $2, updated_at = NOW()
-     WHERE id = $3 AND owner_id = $4
+     WHERE id = $3
      RETURNING id`,
-    [name, description, req.params.boardId, getUserId(res)],
+    [name, description, req.params.boardId],
   );
 
   if (!result.rows[0]) {
     return res.status(404).json({
       error: {
         code: 'BOARD_NOT_FOUND',
-        message: 'Board not found or you do not have permission to edit it',
+        message: 'Board not found',
       },
     });
   }
 
-  const boards = await loadBoards(getUserId(res), req.params.boardId);
+  const boards = await loadBoards(req.params.boardId);
 
   return res.json({ board: boards[0] });
 });
@@ -400,16 +396,16 @@ router.patch('/:boardId', async (req, res) => {
 router.delete('/:boardId', async (req, res) => {
   const result = await pool.query<{ id: string }>(
     `DELETE FROM boards
-     WHERE id = $1 AND owner_id = $2
+     WHERE id = $1
      RETURNING id`,
-    [req.params.boardId, getUserId(res)],
+    [req.params.boardId],
   );
 
   if (!result.rows[0]) {
     return res.status(404).json({
       error: {
         code: 'BOARD_NOT_FOUND',
-        message: 'Board not found or you do not have permission to delete it',
+        message: 'Board not found',
       },
     });
   }
@@ -436,7 +432,7 @@ router.post('/:boardId/columns', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    if (!(await lockBoardForMember(client, boardId, getUserId(res)))) {
+    if (!(await lockBoard(client, boardId))) {
       await client.query('ROLLBACK');
       return res.status(404).json({
         error: { code: 'BOARD_NOT_FOUND', message: 'Board not found' },
@@ -485,7 +481,7 @@ router.patch('/:boardId/columns/order', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    if (!(await lockBoardForMember(client, boardId, getUserId(res)))) {
+    if (!(await lockBoard(client, boardId))) {
       await client.query('ROLLBACK');
       return res.status(404).json({
         error: { code: 'BOARD_NOT_FOUND', message: 'Board not found' },
@@ -555,7 +551,7 @@ router.patch('/:boardId/columns/:columnId', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    if (!(await lockBoardForMember(client, boardId, getUserId(res)))) {
+    if (!(await lockBoard(client, boardId))) {
       await client.query('ROLLBACK');
       return res.status(404).json({
         error: { code: 'BOARD_NOT_FOUND', message: 'Board not found' },
@@ -595,7 +591,7 @@ router.delete('/:boardId/columns/:columnId', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    if (!(await lockBoardForMember(client, boardId, getUserId(res)))) {
+    if (!(await lockBoard(client, boardId))) {
       await client.query('ROLLBACK');
       return res.status(404).json({
         error: { code: 'BOARD_NOT_FOUND', message: 'Board not found' },

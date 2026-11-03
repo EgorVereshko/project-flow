@@ -28,14 +28,12 @@ function getUserId(res: Parameters<typeof authenticate>[1]): string {
 
 async function getBoardIdForColumn(
   columnId: string,
-  userId: string,
 ): Promise<string | null> {
   const result = await pool.query<{ board_id: string }>(
     `SELECT bc.board_id
      FROM board_columns bc
-     JOIN board_members bm ON bm.board_id = bc.board_id
-     WHERE bc.id = $1 AND bm.user_id = $2`,
-    [columnId, userId],
+     WHERE bc.id = $1`,
+    [columnId],
   );
 
   return result.rows[0]?.board_id ?? null;
@@ -85,7 +83,7 @@ router.post('/', async (req, res) => {
   }
 
   const userId = getUserId(res);
-  const boardId = await getBoardIdForColumn(columnId, userId);
+  const boardId = await getBoardIdForColumn(columnId);
 
   if (!boardId) {
     return res.status(404).json({
@@ -155,7 +153,6 @@ router.post('/', async (req, res) => {
 // Редактирование задачи
 router.patch('/:taskId', async (req, res) => {
   const { taskId } = req.params;
-  const userId = getUserId(res);
 
   const title =
     typeof req.body?.title === 'string' ? req.body.title.trim() : undefined;
@@ -207,9 +204,8 @@ router.patch('/:taskId', async (req, res) => {
     `SELECT bc.board_id
      FROM tasks t
      JOIN board_columns bc ON bc.id = t.column_id
-     JOIN board_members bm ON bm.board_id = bc.board_id
-     WHERE t.id = $1 AND bm.user_id = $2`,
-    [taskId, userId],
+     WHERE t.id = $1`,
+    [taskId],
   );
 
   if (!access.rowCount) {
@@ -218,7 +214,6 @@ router.patch('/:taskId', async (req, res) => {
     });
   }
 
-  const boardId = access.rows[0].board_id;
   let assigneeName: string | null | undefined;
 
   if (hasAssigneeId && assigneeId) {
@@ -284,17 +279,14 @@ router.patch('/:taskId', async (req, res) => {
 // Удаление задачи
 router.delete('/:taskId', async (req, res) => {
   const { taskId } = req.params;
-  const userId = getUserId(res);
 
   const result = await pool.query(
     `DELETE FROM tasks t
-     USING board_columns bc, board_members bm
+     USING board_columns bc
      WHERE t.id = $1
        AND bc.id = t.column_id
-       AND bm.board_id = bc.board_id
-       AND bm.user_id = $2
      RETURNING t.id`,
-    [taskId, userId],
+    [taskId],
   );
 
   if (!result.rowCount) {
@@ -312,7 +304,6 @@ router.patch('/:taskId/move', async (req, res) => {
   const columnId =
     typeof req.body?.columnId === 'string' ? req.body.columnId : '';
   const position = req.body?.position;
-  const userId = getUserId(res);
 
   if (
     !isUuid(columnId) ||
@@ -339,10 +330,9 @@ router.patch('/:taskId/move', async (req, res) => {
       `SELECT t.column_id, bc.board_id
        FROM tasks t
        JOIN board_columns bc ON bc.id = t.column_id
-       JOIN board_members bm ON bm.board_id = bc.board_id
-       WHERE t.id = $1 AND bm.user_id = $2
+       WHERE t.id = $1
        FOR UPDATE OF t`,
-      [taskId, userId],
+      [taskId],
     );
 
     if (!taskResult.rowCount) {
@@ -355,9 +345,8 @@ router.patch('/:taskId/move', async (req, res) => {
     const destinationResult = await client.query<{ board_id: string }>(
       `SELECT bc.board_id
        FROM board_columns bc
-       JOIN board_members bm ON bm.board_id = bc.board_id
-       WHERE bc.id = $1 AND bm.user_id = $2`,
-      [columnId, userId],
+       WHERE bc.id = $1`,
+      [columnId],
     );
 
     if (
