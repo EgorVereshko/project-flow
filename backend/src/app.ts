@@ -4,6 +4,7 @@ import cors from 'cors';
 import authRoutes from './modules/auth/auth.routes.js';
 import boardsRoutes from './modules/boards/boards.routes.js';
 import tasksRoutes from './modules/tasks/tasks.routes.js';
+import usersRoutes from './modules/users/users.routes.js';
 
 const app = express();
 
@@ -44,6 +45,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/boards', boardsRoutes);
 
 app.use('/api/tasks', tasksRoutes);
+
+app.use('/api/users', usersRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({

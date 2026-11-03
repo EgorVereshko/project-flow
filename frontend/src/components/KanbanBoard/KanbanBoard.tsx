@@ -37,10 +37,10 @@ import {
 import {
   createBoardColumn,
   deleteBoardColumn,
-  getBoardMembers,
   reorderBoardColumns,
   updateBoardColumn,
 } from '../../services/boardsApi';
+import { getUsers } from '../../services/usersApi';
 
 import {
   addTaskToColumn,
@@ -87,10 +87,10 @@ function KanbanBoard({
   const accessToken = useAuthStore((state) => state.accessToken);
   const queryClient = useQueryClient();
   const boardQueryKey = ['board', boardId, accessToken] as const;
-  const boardMembersQuery = useQuery({
-    queryKey: ['board-members', boardId, accessToken],
-    queryFn: () => getBoardMembers(boardId, accessToken!),
-    enabled: Boolean(boardId && accessToken),
+  const usersQuery = useQuery({
+    queryKey: ['users', accessToken],
+    queryFn: () => getUsers(accessToken!),
+    enabled: Boolean(accessToken),
   });
 
   const [columns, setColumns] = useState(initialColumns);
@@ -778,18 +778,18 @@ function KanbanBoard({
           title={`Add task to ${createColumn.title}`}
           onClose={closeModal}
         >
-          {boardMembersQuery.isPending ? (
-            <p>Loading board members...</p>
-          ) : boardMembersQuery.isError ? (
+          {usersQuery.isPending ? (
+            <p>Loading users...</p>
+          ) : usersQuery.isError ? (
             <div>
-              <p role="alert">Could not load board members.</p>
-              <Button onClick={() => void boardMembersQuery.refetch()}>
+              <p role="alert">Could not load users.</p>
+              <Button onClick={() => void usersQuery.refetch()}>
                 Try again
               </Button>
             </div>
           ) : (
             <TaskForm
-              members={boardMembersQuery.data}
+              users={usersQuery.data}
               defaultValues={{
                 title: '',
                 description: '',
@@ -813,18 +813,18 @@ function KanbanBoard({
             </p>
           )}
 
-          {boardMembersQuery.isPending ? (
-            <p>Loading board members...</p>
-          ) : boardMembersQuery.isError ? (
+          {usersQuery.isPending ? (
+            <p>Loading users...</p>
+          ) : usersQuery.isError ? (
             <div>
-              <p role="alert">Could not load board members.</p>
-              <Button onClick={() => void boardMembersQuery.refetch()}>
+              <p role="alert">Could not load users.</p>
+              <Button onClick={() => void usersQuery.refetch()}>
                 Try again
               </Button>
             </div>
           ) : (
             <TaskForm
-              members={boardMembersQuery.data}
+              users={usersQuery.data}
               defaultValues={{
                 title: editingTask.title,
                 description: editingTask.description,

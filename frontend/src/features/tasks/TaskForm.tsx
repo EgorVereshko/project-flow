@@ -8,13 +8,13 @@ import {
   taskSchema,
   type TaskFormValues,
 } from './taskSchema';
-import type { BoardMember } from '../../types/board';
+import type { AppUser } from '../../types/board';
 
 import './TaskForm.scss';
 
 type TaskFormProps = {
   defaultValues: TaskFormValues;
-  members: BoardMember[];
+  users: AppUser[];
   submitLabel: string;
   onSubmit: (values: TaskFormValues) => void | Promise<void>;
   onCancel: () => void;
@@ -23,7 +23,7 @@ type TaskFormProps = {
 
 function TaskForm({
   defaultValues,
-  members,
+  users,
   submitLabel,
   onSubmit,
   onCancel,
@@ -102,12 +102,18 @@ function TaskForm({
           {...register('assigneeId')}
         >
           <option value="">Unassigned</option>
-          {members.map((member) => (
-            <option key={member.id} value={member.id}>
-              {member.name} ({member.email})
+          {users.map((user) => (
+            <option key={user.id} value={user.id}>
+              {user.username} ({user.email})
             </option>
           ))}
         </select>
+
+        {users.length === 0 && (
+          <p className="task-form__hint">
+            No users are available. This task will remain unassigned.
+          </p>
+        )}
 
         {errors.assigneeId && (
           <p className="task-form__error">

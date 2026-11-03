@@ -41,16 +41,12 @@ async function getBoardIdForColumn(
   return result.rows[0]?.board_id ?? null;
 }
 
-async function getBoardMemberName(
-  boardId: string,
-  memberId: string,
+async function getUserName(
+  userId: string,
 ): Promise<string | null> {
   const result = await pool.query<{ name: string }>(
-    `SELECT u.name
-     FROM board_members bm
-     JOIN users u ON u.id = bm.user_id
-     WHERE bm.board_id = $1 AND bm.user_id = $2`,
-    [boardId, memberId],
+    'SELECT name FROM users WHERE id = $1',
+    [userId],
   );
 
   return result.rows[0]?.name ?? null;
@@ -101,14 +97,14 @@ router.post('/', async (req, res) => {
   }
 
   const assigneeName = assigneeId
-    ? await getBoardMemberName(boardId, assigneeId)
+    ? await getUserName(assigneeId)
     : null;
 
   if (assigneeId && !assigneeName) {
     return res.status(400).json({
       error: {
         code: 'INVALID_ASSIGNEE',
-        message: 'Assignee must be a member of this board',
+        message: 'Assignee must be an existing user',
       },
     });
   }
@@ -226,13 +222,13 @@ router.patch('/:taskId', async (req, res) => {
   let assigneeName: string | null | undefined;
 
   if (hasAssigneeId && assigneeId) {
-    assigneeName = await getBoardMemberName(boardId, assigneeId);
+    assigneeName = await getUserName(assigneeId);
 
     if (!assigneeName) {
       return res.status(400).json({
         error: {
           code: 'INVALID_ASSIGNEE',
-          message: 'Assignee must be a member of this board',
+          message: 'Assignee must be an existing user',
         },
       });
     }
@@ -269,7 +265,7 @@ router.patch('/:taskId', async (req, res) => {
 
   const task = result.rows[0];
   if (assigneeName === undefined && task.assignee_id) {
-    assigneeName = await getBoardMemberName(boardId, task.assignee_id);
+    assigneeName = await getUserName(task.assignee_id);
   }
 
   return res.json({

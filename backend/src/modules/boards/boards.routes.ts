@@ -269,10 +269,10 @@ router.get('/:boardId', async (req, res) => {
 router.get('/:boardId/members', async (req, res) => {
   const result = await pool.query<{
     id: string;
-    name: string;
+    username: string;
     email: string;
   }>(
-    `SELECT u.id, u.name, u.email
+    `SELECT u.id, u.name AS username, u.email
      FROM board_members bm
      JOIN users u ON u.id = bm.user_id
      WHERE bm.board_id = $1 AND EXISTS (

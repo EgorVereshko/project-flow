@@ -7,9 +7,9 @@ export type Task = {
   deadline: string | null;
 };
 
-export type BoardMember = {
+export type AppUser = {
   id: string;
-  name: string;
+  username: string;
   email: string;
 };
 
