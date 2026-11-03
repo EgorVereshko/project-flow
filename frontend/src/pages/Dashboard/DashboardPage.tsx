@@ -1,59 +1,26 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 
 import Button from '../../components/Button/Button';
 import Card from '../../components/Card/Card';
 import { getBoards } from '../../services/boardsApi';
-import type { Board } from '../../types/board';
 
 import { useAuthStore } from '../../features/auth/authStore';
 
 import './DashboardPage.scss';
 
 function DashboardPage() {
-  const accessToken = useAuthStore((state) => state.accessToken)
-
-  const [boards, setBoards] = useState<Board[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!accessToken) {
-      setBoards([]);
-      setIsLoading(false);
-      return;
-    }
-
-    const token = accessToken;
-    let isCurrent = true;
-
-    async function loadBoards() {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const data = await getBoards(token);
-
-        if (isCurrent) {
-          setBoards(data);
-        }
-      } catch {
-        if (isCurrent) {
-          setError('Не удалось загрузить данные дашборда.');
-        }
-      } finally {
-        if (isCurrent) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void loadBoards();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [accessToken]);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const {
+    data: boards = [],
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ['boards', accessToken],
+    queryFn: () => getBoards(accessToken!),
+    enabled: Boolean(accessToken),
+  });
 
   const totalTasks = boards.reduce(
     (total, board) =>
@@ -91,7 +58,7 @@ function DashboardPage() {
     )
     .slice(0, 3);
 
-  if (isLoading) {
+  if (accessToken && isPending) {
     return (
       <div className="dashboard">
         <p>Загрузка дашборда...</p>
@@ -99,12 +66,12 @@ function DashboardPage() {
     );
   }
 
-  if (error) {
+  if (isError) {
     return (
       <div className="dashboard">
         <h1 className="dashboard__title">Dashboard</h1>
-        <p role="alert">{error}</p>
-        <Button onClick={() => window.location.reload()}>
+        <p role="alert">Не удалось загрузить данные дашборда.</p>
+        <Button onClick={() => void refetch()}>
           Повторить
         </Button>
       </div>
