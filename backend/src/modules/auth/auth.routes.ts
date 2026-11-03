@@ -5,6 +5,10 @@ import { pool } from '../../config/db.js';
 import { env } from '../../config/env.js';
 import { authenticate } from './auth.middleware.js';
 import {
+  loginRateLimiter,
+  registerRateLimiter,
+} from './authRateLimiters.js';
+import {
   clearRefreshCookie,
   createAccessToken,
   createRefreshToken,
@@ -30,7 +34,7 @@ function invalidInput(res: Parameters<typeof router.post>[1] extends never ? nev
   });
 }
 
-router.post('/register', async (req, res) => {
+router.post('/register', registerRateLimiter, async (req, res) => {
   const name =
     typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   const email =
@@ -135,7 +139,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginRateLimiter, async (req, res) => {
   const email =
     typeof req.body?.email === 'string'
       ? req.body.email.trim().toLowerCase()
